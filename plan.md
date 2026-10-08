@@ -29,3 +29,12 @@ Genra is a cinematic discovery layer for brands and agencies hiring AI-native cr
 - The brief builder uses deterministic keyword extraction in the client for instant demos; the API exposes the matching endpoint shape for later model integration.
 - Portfolio media uses the supplied replaceable video URLs plus CSS poster treatments, so the app never depends on generated assets to render.
 - The backend uses optional Mongoose when `MONGODB_URI` exists, but the preview path always works with memory data.
+
+## Finalized landing-page order
+1. Hero — cinematic entry point with creator search and brief CTA.
+2. Creator Discovery — searchable network preview with creator cards.
+3. Brief Marketplace — structured brief-to-match workflow and builder CTA.
+4. Portfolio Showcase — marquee rail of AI-native work and visible process.
+5. Engagement Management — trust signals, invitations, workspace handoff, and final CTA.
+
+The landing page uses the supplied dark mode as the base, with neon purple CTA energy and cyan verification accents.
