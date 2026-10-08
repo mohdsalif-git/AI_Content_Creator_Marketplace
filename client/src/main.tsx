@@ -4,6 +4,7 @@ import App from './App'
 import './styles.css'
 import './light-overrides.css'
 import './studio.css'
+import './home-overrides.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

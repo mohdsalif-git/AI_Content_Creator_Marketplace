@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 import { gradientPosters, videoAssets } from './data/assets'
 import Studio from './pages/Studio'
+import NewHomePage from './pages/HomePage'
 
 type Role = 'Brand' | 'Creator'
 type Page = 'home' | 'creators' | 'profile' | 'newBrief' | 'briefs' | 'briefDetail' | 'dashboard' | 'studio'
@@ -151,9 +152,9 @@ function App() {
   const activeCreator = creators.find((creator) => creator.id === id) || creators[0]
   const activeBrief = briefs.find((brief) => brief.id === id) || briefs[0]
   return <div className="app-shell">
-    <Navbar role={role} setRole={setRole} navigate={navigate} />
+    {page === 'home' ? <NewHomePage navigate={navigate} /> : <Navbar role={role} setRole={setRole} navigate={navigate} />}
     <main>
-      {page === 'home' && <HomePage navigate={navigate} />}
+      {page === 'home' && null}
       {page === 'creators' && <CreatorsPage navigate={navigate} />}
       {page === 'profile' && <CreatorProfile creator={activeCreator} navigate={navigate} notify={notify} />}
       {page === 'newBrief' && <BriefBuilder navigate={navigate} notify={notify} />}
@@ -162,7 +163,7 @@ function App() {
       {page === 'dashboard' && <DashboardPage navigate={navigate} notify={notify} />}
       {page === 'studio' && <Studio navigate={navigate} notify={notify} />}
     </main>
-    {page === 'home' && <Footer navigate={navigate} />}
+    {page !== 'home' && false && <Footer navigate={navigate} />}
     {toast && <div className="toast"><Check size={15} /> {toast}</div>}
   </div>
 }
