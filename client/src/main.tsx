@@ -5,6 +5,7 @@ import './styles.css'
 import './light-overrides.css'
 import './studio.css'
 import './home-overrides.css'
+import './home-auth.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
