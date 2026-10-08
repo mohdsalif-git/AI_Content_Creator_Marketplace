@@ -35,11 +35,11 @@ import {
 import { gradientPosters, videoAssets } from './data/assets'
 import Studio from './pages/Studio'
 import NewHomePage from './pages/HomePage'
-import AuthModal from './components/AuthModal'
-import { authenticateDemoUser, isAuthenticated } from './auth'
+import AuthPages from './pages/AuthPages'
+import { getUser, isAuthenticated, signOutDemoUser } from './auth'
 
 type Role = 'Brand' | 'Creator'
-type Page = 'home' | 'creators' | 'profile' | 'newBrief' | 'briefs' | 'briefDetail' | 'dashboard' | 'studio'
+type Page = 'home' | 'creators' | 'profile' | 'newBrief' | 'briefs' | 'briefDetail' | 'dashboard' | 'studio' | 'signin' | 'signup' | 'forgot'
 
 type Creator = {
   id: string
@@ -122,12 +122,17 @@ const toolOptions = ['Veo', 'Runway', 'Kling', 'Sora', 'Midjourney', 'Flux', 'Co
 function useRoute(): [Page, string | undefined, (path: string) => void] {
   const get = (): [Page, string | undefined] => {
     const path = window.location.pathname
+    if (path === '/signin') return ['signin', undefined]
+    if (path === '/create-account') return ['signup', undefined]
+    if (path === '/forgot-password') return ['forgot', undefined]
+    const protectedPath = path === '/creators' || path.startsWith('/creators/') || path === '/briefs' || path === '/briefs/new' || path.startsWith('/briefs/') || path === '/dashboard' || path === '/projects' || path === '/profile' || path === '/brands' || path === '/studio' || path === '/studio/history'
+    if (protectedPath && !isAuthenticated()) { sessionStorage.setItem('genra-auth-destination', path); window.history.replaceState({}, '', '/signin'); return ['signin', undefined] }
     if (path === '/creators') return ['creators', undefined]
     if (path.startsWith('/creators/')) return ['profile', path.split('/')[2]]
     if (path === '/briefs/new') return ['newBrief', undefined]
-    if (path === '/briefs') return ['briefs', undefined]
+    if (path === '/briefs' || path === '/brands') return ['briefs', undefined]
     if (path.startsWith('/briefs/')) return ['briefDetail', path.split('/')[2]]
-    if (path === '/dashboard') return ['dashboard', undefined]
+    if (path === '/dashboard' || path === '/projects' || path === '/profile') return ['dashboard', undefined]
     if (path === '/studio' || path === '/studio/history') return ['studio', undefined]
     return ['home', undefined]
   }
@@ -149,33 +154,32 @@ function App() {
   const [page, id, navigate] = useRoute()
   const [role, setRole] = useState<Role>(() => (localStorage.getItem('genra-role') as Role) || 'Brand')
   const [toast, setToast] = useState('')
-  const [authOpen, setAuthOpen] = useState(false)
-  const [authDestination, setAuthDestination] = useState('/dashboard')
   const [getStartedOpen, setGetStartedOpen] = useState(false)
   useEffect(() => { localStorage.setItem('genra-role', role) }, [role])
   const notify = (message: string) => { setToast(message); window.setTimeout(() => setToast(''), 2600) }
-  const openAuth = (destination = '/dashboard') => { setAuthDestination(destination); setAuthOpen(true) }
+  const openAuth = (destination = '/dashboard') => { sessionStorage.setItem('genra-auth-destination', destination); navigate('/signin') }
   const openStudio = () => { if (isAuthenticated()) navigate('/studio'); else openAuth('/studio') }
-  const finishAuth = () => { authenticateDemoUser(); setAuthOpen(false); navigate(authDestination) }
   const startGetStarted = () => setGetStartedOpen(true)
   const chooseGetStarted = (destination: string) => { setGetStartedOpen(false); if (destination === '/studio') openStudio(); else navigate(destination) }
   const activeCreator = creators.find((creator) => creator.id === id) || creators[0]
   const activeBrief = briefs.find((brief) => brief.id === id) || briefs[0]
   return <div className="app-shell">
-    {page === 'home' ? <NewHomePage navigate={navigate} onStudioClick={openStudio} onSignIn={() => openAuth('/dashboard')} onGetStarted={startGetStarted} /> : <Navbar role={role} setRole={setRole} navigate={navigate} onStudioClick={openStudio} onSignIn={() => openAuth('/dashboard')} onGetStarted={startGetStarted} />}
+    <Navbar role={role} setRole={setRole} navigate={navigate} onStudioClick={openStudio} onSignIn={() => openAuth('/dashboard')} onGetStarted={startGetStarted} />
     <main>
-      {page === 'home' && null}
+      {page === 'home' && <NewHomePage navigate={navigate} onStudioClick={openStudio} onSignIn={() => openAuth('/dashboard')} onGetStarted={startGetStarted} />}
       {page === 'creators' && <CreatorsPage navigate={navigate} />}
       {page === 'profile' && <CreatorProfile creator={activeCreator} navigate={navigate} notify={notify} />}
       {page === 'newBrief' && <BriefBuilder navigate={navigate} notify={notify} />}
       {page === 'briefs' && <BriefsPage navigate={navigate} />}
       {page === 'briefDetail' && <BriefDetail brief={activeBrief} navigate={navigate} notify={notify} />}
       {page === 'dashboard' && <DashboardPage navigate={navigate} notify={notify} />}
-      {page === 'studio' && (isAuthenticated() ? <Studio navigate={navigate} notify={notify} /> : <div className="auth-required-page"><div><span className="home-kicker">GENRA AI STUDIO</span><h1>Sign in to continue.</h1><p>Continue as a demo user to open your creative workspace.</p><button className="home-primary" onClick={() => openAuth('/studio')}>Sign In <ArrowUpRight size={15} /></button><button className="home-secondary" onClick={() => navigate('/')}>Back to Genra <ArrowUpRight size={15} /></button></div></div>)}
+      {page === 'studio' && <Studio navigate={navigate} notify={notify} />}
+      {page === 'signin' && <AuthPages mode="signin" navigate={navigate} />}
+      {page === 'signup' && <AuthPages mode="signup" navigate={navigate} />}
+      {page === 'forgot' && <AuthPages mode="forgot" navigate={navigate} />}
     </main>
     {page !== 'home' && false && <Footer navigate={navigate} />}
     {toast && <div className="toast"><Check size={15} /> {toast}</div>}
-    {authOpen && <AuthModal onClose={() => setAuthOpen(false)} onAuth={finishAuth} title={authDestination === '/studio' ? 'Sign in to Genra AI Studio' : 'Welcome back to Genra'} description={authDestination === '/studio' ? 'Create images, videos and motion with Genra AI Studio. Sign in to continue.' : 'Continue as a demo user to explore your Genra workspace.'} />}
     {getStartedOpen && <GetStartedModal onClose={() => setGetStartedOpen(false)} onChoose={chooseGetStarted} />}
   </div>
 }
@@ -187,6 +191,7 @@ function GetStartedModal({ onClose, onChoose }: { onClose: () => void; onChoose:
 function Navbar({ role, setRole, navigate, onStudioClick, onSignIn, onGetStarted }: { role: Role; setRole: (role: Role) => void; navigate: (path: string) => void; onStudioClick: () => void; onSignIn: () => void; onGetStarted: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const loggedIn = isAuthenticated()
+  const user = getUser()
   return <header className="site-nav-wrap">
     <nav className="site-nav" aria-label="Main navigation">
       <button className="wordmark" onClick={() => navigate('/')} aria-label="Go to Genra home"><span className="wordmark-mark">G<span>/</span></span><span>Genra</span></button>
@@ -202,8 +207,7 @@ function Navbar({ role, setRole, navigate, onStudioClick, onSignIn, onGetStarted
           <button className={role === 'Brand' ? 'active' : ''} onClick={() => setRole('Brand')}>Brand</button>
           <button className={role === 'Creator' ? 'active' : ''} onClick={() => setRole('Creator')}>Creator</button>
         </div>
-        <button className="nav-signup" onClick={loggedIn ? () => navigate('/dashboard') : onSignIn}>{loggedIn ? 'Dashboard' : 'Sign In'} <ArrowUpRight size={14} /></button>
-        <button className="nav-signup" onClick={onGetStarted}>Get Started <ArrowUpRight size={14} /></button>
+        {loggedIn ? <><button className="nav-signup" onClick={() => navigate('/dashboard')}>{user?.name || 'Dashboard'} <ArrowUpRight size={14} /></button><button className="nav-signup" onClick={() => { signOutDemoUser(); navigate('/') }}>Logout</button></> : <><button className="nav-signup" onClick={onSignIn}>Sign In <ArrowUpRight size={14} /></button><button className="nav-signup" onClick={onGetStarted}>Get Started <ArrowUpRight size={14} /></button></>}
         <button className="menu-button" aria-label="Toggle menu" onClick={() => setMenuOpen(!menuOpen)}><Menu size={18} /></button>
       </div>
     </nav>

@@ -1,7 +1,5 @@
-import { ArrowUpRight, BadgeCheck, Menu, Sparkles } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowUpRight, BadgeCheck, Sparkles } from 'lucide-react'
 import { gradientPosters } from '../data/assets'
-import { isAuthenticated } from '../auth'
 
 type HomeProps = { navigate: (path: string) => void; onStudioClick: () => void; onSignIn: () => void; onGetStarted: () => void }
 type HomeCreator = { id: string; name: string; specialty: string; mark: string; tools: string[]; gradient: string }
@@ -13,12 +11,8 @@ const homeCreators: HomeCreator[] = [
   { id: 'sofia-lee', name: 'Sofia Lee', specialty: 'AI Creative Director', mark: 'SL', tools: ['Midjourney', 'Sora', 'Flux'], gradient: gradientPosters[4] },
 ]
 
-export default function HomePage({ navigate, onStudioClick, onSignIn, onGetStarted }: HomeProps) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const accountAction = isAuthenticated() ? () => navigate('/dashboard') : onSignIn
-  const links = [['Discover', '/creators'], ['Creators', '/creators'], ['Brands', '/briefs'], ['AI Studio', '/studio'], ['Projects', '/dashboard']]
+export default function HomePage({ navigate, onStudioClick }: HomeProps) {
   return <div className="home-page">
-    <header className="home-nav"><button className="home-wordmark" onClick={() => navigate('/')} aria-label="Genra home">GENRA</button><nav className={menuOpen ? 'home-nav-links open' : 'home-nav-links'}>{links.map(([label, path]) => <button key={label} onClick={() => { if (path === '/studio') onStudioClick(); else navigate(path); setMenuOpen(false) }}>{label}</button>)}</nav><div className="home-nav-actions"><button className="home-signin" onClick={accountAction}>{isAuthenticated() ? 'Dashboard' : 'Sign In'}</button><button className="home-get-started" onClick={onGetStarted}>Get Started <ArrowUpRight size={14} /></button><button className="home-menu" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle navigation"><Menu size={18} /></button></div></header>
     <section className="home-hero"><span className="home-kicker">AI CREATOR MARKETPLACE</span><h1>The creative marketplace<br />for the <em>AI era.</em></h1><p>Discover AI creators, connect with brands, and create with powerful AI tools — all in one place.</p><div className="home-hero-actions"><button className="home-primary" onClick={() => navigate('/creators')}>Explore Genra <ArrowUpRight size={15} /></button><button className="home-secondary" onClick={onStudioClick}>Open AI Studio <Sparkles size={15} /></button></div></section>
     <section className="home-entry-section section-pad"><div className="home-entry-grid"><HomeEntryCard label="FOR CREATORS" title="Show what you can create." description="Build your profile, showcase your workflow and get discovered by brands." button="Join as Creator" gradient={gradientPosters[2]} navigate={navigate} path="/dashboard" mark="01" /><HomeEntryCard label="FOR BRANDS" title="Find the right AI creator." description="Discover creators by skills, AI tools, specialization, workflow and commercial rights." button="Find Creators" gradient={gradientPosters[0]} navigate={navigate} path="/creators" mark="02" /><HomeEntryCard label="AI STUDIO" title="Create with AI." description="Generate images, videos, motion and creative edits in one workspace." button="Open AI Studio" gradient={gradientPosters[3]} navigate={navigate} path="/studio" mark="03" studio onNavigate={onStudioClick} /></div></section>
     <section className="home-featured section-pad"><div className="home-section-head"><div><span className="home-kicker">THE CREATOR INDEX</span><h2>Featured AI <em>Creators</em></h2></div><div><p>Discover creators by their tools, skills and creative process.</p><button className="home-link" onClick={() => navigate('/creators')}>View all creators <ArrowUpRight size={14} /></button></div></div><div className="home-creator-grid">{homeCreators.map((creator) => <HomeCreatorCard key={creator.id} creator={creator} navigate={navigate} />)}</div></section>
