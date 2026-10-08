@@ -38,3 +38,10 @@ Genra is a cinematic discovery layer for brands and agencies hiring AI-native cr
 5. Engagement Management — trust signals, invitations, workspace handoff, and final CTA.
 
 The landing page now uses a precision white/light base with near-black editorial typography, neon purple CTA energy, and cyan verification accents. The existing layout, content, interactions, motion, and responsive breakpoints remain unchanged.
+
+
+## Additive Genra AI Studio extension
+
+The Studio lives in new isolated modules: `client/src/pages/Studio.tsx`, `client/src/data/studioData.ts`, and `client/src/studio.css`. The existing app shell receives only the `/studio` and `/studio/history` route handling plus one `AI Studio` navbar item; existing marketplace pages, data, CSS, API, and interactions remain unchanged.
+
+Studio uses local React state and mock data only: Create, Image, Video, Motion, Edit, History, Presets, Workflow, Projects, local generation progress, creator query connection, and handoffs to `/creators` and `/briefs/new`. It follows Genra's white editorial system, existing type, rounded cards, light borders, purple CTA gradient, and cyan trust accents; no new backend or dependency is required.

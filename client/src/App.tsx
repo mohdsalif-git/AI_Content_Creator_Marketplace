@@ -33,9 +33,10 @@ import {
   Zap,
 } from 'lucide-react'
 import { gradientPosters, videoAssets } from './data/assets'
+import Studio from './pages/Studio'
 
 type Role = 'Brand' | 'Creator'
-type Page = 'home' | 'creators' | 'profile' | 'newBrief' | 'briefs' | 'briefDetail' | 'dashboard'
+type Page = 'home' | 'creators' | 'profile' | 'newBrief' | 'briefs' | 'briefDetail' | 'dashboard' | 'studio'
 
 type Creator = {
   id: string
@@ -124,6 +125,7 @@ function useRoute(): [Page, string | undefined, (path: string) => void] {
     if (path === '/briefs') return ['briefs', undefined]
     if (path.startsWith('/briefs/')) return ['briefDetail', path.split('/')[2]]
     if (path === '/dashboard') return ['dashboard', undefined]
+    if (path === '/studio' || path === '/studio/history') return ['studio', undefined]
     return ['home', undefined]
   }
   const [route, setRoute] = useState<[Page, string | undefined]>(get)
@@ -158,6 +160,7 @@ function App() {
       {page === 'briefs' && <BriefsPage navigate={navigate} />}
       {page === 'briefDetail' && <BriefDetail brief={activeBrief} navigate={navigate} notify={notify} />}
       {page === 'dashboard' && <DashboardPage navigate={navigate} notify={notify} />}
+      {page === 'studio' && <Studio navigate={navigate} notify={notify} />}
     </main>
     {page === 'home' && <Footer navigate={navigate} />}
     {toast && <div className="toast"><Check size={15} /> {toast}</div>}
@@ -172,6 +175,7 @@ function Navbar({ role, setRole, navigate }: { role: Role; setRole: (role: Role)
       <div className={`nav-links ${menuOpen ? 'open' : ''}`}>
         <button onClick={() => { navigate('/creators'); setMenuOpen(false) }}>Creators</button>
         <button onClick={() => { navigate('/briefs/new'); setMenuOpen(false) }}>Post a Brief</button>
+        <button onClick={() => { navigate('/studio'); setMenuOpen(false) }}>AI Studio</button>
         <button onClick={() => { navigate('/#how-it-works'); setMenuOpen(false) }}>How it works</button>
       </div>
       <div className="nav-actions">
