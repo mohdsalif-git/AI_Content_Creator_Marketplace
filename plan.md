@@ -37,4 +37,4 @@ Genra is a cinematic discovery layer for brands and agencies hiring AI-native cr
 4. Portfolio Showcase — marquee rail of AI-native work and visible process.
 5. Engagement Management — trust signals, invitations, workspace handoff, and final CTA.
 
-The landing page uses the supplied dark mode as the base, with neon purple CTA energy and cyan verification accents.
+The landing page now uses a precision white/light base with near-black editorial typography, neon purple CTA energy, and cyan verification accents. The existing layout, content, interactions, motion, and responsive breakpoints remain unchanged.

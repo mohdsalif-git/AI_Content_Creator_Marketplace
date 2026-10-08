@@ -15,7 +15,7 @@ The Vite preview runs on `http://localhost:3000`; the Express API runs on `http:
 
 The React client in `client/src` owns the cinematic marketplace experience and demo data. The Express service in `server/index.mjs` exposes the REST contract and optional Mongoose connection point. The app is intentionally credentialless in this demo: Brand/Creator is a localStorage role toggle, not a password flow. Media URLs live in `client/src/data/assets.ts` so the supplied references can be swapped in one place.
 
-The design is dark editorial liquid-glass: Instrument Serif for display, Kanit for UI, verification teal `#5EEAD4`, and a purple-to-orange CTA gradient. The visual language is inspired by the supplied Higgsfield and Leonardo references, but all copy and fictional creators are original.
+The design is light editorial liquid-glass: white surfaces, near-black Instrument Serif display type, Kanit for UI, verification cyan `#5EEAD4`, and a purple-to-orange CTA gradient. The visual language is inspired by the supplied Higgsfield and Leonardo references, but all copy and fictional creators are original.
 
 ## API
 
