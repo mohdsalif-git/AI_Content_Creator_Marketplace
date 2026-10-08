@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Clock3, Copy, Download, Film, Image as ImageIcon, Layers3, Link2, Play, Plus, RotateCcw, Send, Sparkles, Upload, WandSparkles, X, Zap } from 'lucide-react'
 import { videoAssets } from '../data/assets'
 import { studioHistory, studioModels, studioPresets, studioProjects, type StudioTab } from '../data/studioData'
+import { isAuthenticated } from '../auth'
 
 type StudioProps = { navigate: (path: string) => void; notify: (message: string) => void }
 type StudioMode = 'Create' | 'Image' | 'Video' | 'Motion' | 'Edit' | 'History' | 'Presets' | 'Workflow' | 'Projects'
@@ -23,11 +24,14 @@ export default function Studio({ navigate, notify }: StudioProps) {
   const [workflowNode, setWorkflowNode] = useState('Prompt')
   const [history, setHistory] = useState(studioHistory)
   const [creator, setCreator] = useState<{ name: string; specialty: string; tools: string[] } | null>(null)
+  const [authPromptOpen, setAuthPromptOpen] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('creator')) setCreator({ name: params.get('creator') === 'kenji-park' ? 'Kenji Park' : 'Mara Lennox', specialty: params.get('creator') === 'kenji-park' ? 'AI Motion / Fashion Film' : 'AI Video / Product Film', tools: params.get('creator') === 'kenji-park' ? ['Kling', 'Sora', 'Topaz'] : ['Veo', 'Runway', 'ComfyUI'] })
     if (window.location.pathname === '/studio/history') setActive('History')
+    const pendingPrompt = localStorage.getItem('genra-studio-prompt')
+    if (pendingPrompt) { setPrompt(pendingPrompt); localStorage.removeItem('genra-studio-prompt') }
   }, [])
 
   useEffect(() => {
@@ -40,21 +44,24 @@ export default function Studio({ navigate, notify }: StudioProps) {
     return () => window.clearInterval(timer)
   }, [generating, active, model, prompt])
 
-  const startGeneration = (kind = active) => { setActive(kind as StudioMode); setProgress(0); setGenerated(false); setGenerating(true) }
+  const startGeneration = (kind = active) => { if (!isAuthenticated()) { localStorage.setItem('genra-studio-prompt', prompt); sessionStorage.setItem('genra-auth-destination', '/studio'); setAuthPromptOpen(true); return } setActive(kind as StudioMode); setProgress(0); setGenerated(false); setGenerating(true) }
   const usePreset = (preset: typeof studioPresets[number]) => { setPrompt(preset.prompt); setStyle(preset.style); setActive('Create'); notify(`${preset.title} preset loaded`) }
   const displayGradient = useMemo(() => generated ? studioPresets[0].gradient : 'linear-gradient(135deg,#f4f5fa 0%,#e7ecf9 46%,#fbfbff 100%)', [generated])
 
   return <div className="studio-page">
     <section className="studio-hero page-frame section-pad"><div><span className="section-kicker">GENRA / AI STUDIO</span><h1>Turn ideas<br />into <em>visuals.</em></h1><p>Generate, animate and refine creative concepts before you bring the right creator into the room.</p><div className="studio-hero-actions"><button className="gradient-button" onClick={() => document.getElementById('studio-workspace')?.scrollIntoView({ behavior: 'smooth' })}>Start Creating <Sparkles size={15} /></button><button className="outline-button" onClick={() => navigate('/creators')}>Explore Creators <ArrowUpRight size={15} /></button></div></div><div className="studio-hero-note"><span className="studio-note-orb"><Sparkles size={18} /></span><strong>Concept first.</strong><span>Creator-ready by design.</span></div></section>
-    <div className="studio-header" id="studio-workspace"><div className="studio-header-inner"><div className="studio-brand"><span className="studio-brand-mark">G/</span><div><strong>GENRA AI STUDIO</strong><span>Creative workspace</span></div></div><div className="studio-tabs" role="tablist" aria-label="AI Studio tools">{tabs.map((tab) => <button key={tab} className={active === tab ? 'active' : ''} onClick={() => setActive(tab)} role="tab" aria-selected={active === tab}>{tab}</button>)}</div><div className="studio-account"><span><Zap size={14} /> 120 credits</span><button onClick={() => setActive('Projects')}>Projects</button><button onClick={() => notify('Profile menu opened')}>Profile</button></div></div></div>
+    <div className="studio-header" id="studio-workspace"><div className="studio-header-inner"><div className="studio-brand"><span className="studio-brand-mark">G/</span><div><strong>GENRA AI STUDIO</strong><span>Creative workspace</span></div></div><div className="studio-tabs" role="tablist" aria-label="AI Studio tools">{tabs.map((tab) => <button key={tab} className={active === tab ? 'active' : ''} onClick={() => setActive(tab)} role="tab" aria-selected={active === tab}>{tab}</button>)}</div><div className="studio-account"><span><Zap size={14} /> 120 credits</span><button onClick={() => setActive('Projects')}>Projects</button></div></div></div>
     <main className="studio-main section-pad">
       {creator && <div className="studio-creator-connection glass-card"><div><span className="section-kicker">WORKING WITH</span><strong>{creator.name}</strong><span>{creator.specialty}</span><div className="studio-creator-tools">{creator.tools.map((tool) => <span key={tool}>{tool}</span>)}</div></div><button className="gradient-button" onClick={() => notify(`Studio linked with ${creator.name}`)}>Create with this Creator <Link2 size={15} /></button></div>}
       {active === 'History' ? <HistoryView history={history} setHistory={setHistory} notify={notify} /> : active === 'Presets' ? <PresetsView usePreset={usePreset} /> : active === 'Workflow' ? <WorkflowView selected={workflowNode} setSelected={setWorkflowNode} /> : active === 'Edit' ? <EditView selectedTool={selectedTool} setSelectedTool={setSelectedTool} generated={generated} setGenerated={setGenerated} notify={notify} /> : active === 'Motion' ? <MotionView startGeneration={startGeneration} generated={generated} generating={generating} progress={progress} /> : active === 'Video' ? <VideoView prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} notify={notify} /> : active === 'Image' ? <ImageView prompt={prompt} setPrompt={setPrompt} style={style} setStyle={setStyle} model={model} setModel={setModel} ratio={ratio} setRatio={setRatio} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} notify={notify} /> : active === 'Projects' ? <ProjectsView navigate={navigate} notify={notify} /> : <CreateView prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} ratio={ratio} setRatio={setRatio} quality={quality} setQuality={setQuality} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} displayGradient={displayGradient} setActive={setActive} usePreset={usePreset} notify={notify} navigate={navigate} />}
       {(['Create', 'Image', 'Video', 'Motion', 'Edit'] as StudioMode[]).includes(active) && <div className="studio-lower-grid"><PresetsView usePreset={usePreset} /><WorkflowView selected={workflowNode} setSelected={setWorkflowNode} /></div>}
       {active !== 'History' && active !== 'Projects' && active !== 'Presets' && active !== 'Workflow' && <div className="studio-differentiator"><div><span className="section-kicker">THE GENRA DIFFERENCE</span><h2>Don't just see what an AI creator makes.<br /><em>See how they work and what rights you get.</em></h2></div><div className="studio-signal-list">{['TOOLS', 'SKILLS', 'WORKFLOW', 'PORTFOLIO', 'COMMERCIAL RIGHTS'].map((item, index) => <span key={item}><b>0{index + 1}</b>{item}</span>)}</div></div>}
     </main>
+    {authPromptOpen && <StudioAuthPrompt onClose={() => setAuthPromptOpen(false)} onSignIn={() => navigate('/signin')} onCreateAccount={() => navigate('/create-account')} onGoogle={() => navigate('/signin')} />}
   </div>
 }
+
+function StudioAuthPrompt({ onClose, onSignIn, onCreateAccount, onGoogle }: { onClose: () => void; onSignIn: () => void; onCreateAccount: () => void; onGoogle: () => void }) { return <div className="studio-auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="studio-auth-title"><div className="studio-auth-card"><button className="studio-auth-close" onClick={onClose} aria-label="Close sign in prompt"><X size={17} /></button><span className="studio-auth-mark">G/</span><span className="home-kicker">GENRA / AI STUDIO</span><h2 id="studio-auth-title">Sign in to create with Genra</h2><p>Create an account or sign in to generate AI content.</p><button className="home-primary studio-auth-action" onClick={onSignIn}>Sign In <ArrowUpRight size={15} /></button><button className="home-secondary studio-auth-action" onClick={onCreateAccount}>Create Account <ArrowUpRight size={15} /></button><button className="auth-google" onClick={onGoogle}>Continue with Google</button></div></div> }
 
 function StudioWorkspace({ title, subtitle, children, preview, previewLabel = 'YOUR CANVAS IS READY' }: { title: string; subtitle: string; children: React.ReactNode; preview: React.ReactNode; previewLabel?: string }) { return <section className="studio-workspace"><div className="studio-control-panel"><span className="section-kicker">{title}</span><h2>{subtitle}</h2>{children}</div><div className="studio-preview-panel"><div className="studio-preview-head"><span>{previewLabel}</span><span className="studio-live"><i /> LOCAL DEMO</span></div>{preview}</div></section> }
 function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) { return <label className="studio-control"><span>{label}</span>{children}</label> }
