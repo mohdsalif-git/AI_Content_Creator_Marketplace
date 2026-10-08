@@ -125,7 +125,7 @@ function useRoute(): [Page, string | undefined, (path: string) => void] {
     if (path === '/signin') return ['signin', undefined]
     if (path === '/create-account') return ['signup', undefined]
     if (path === '/forgot-password') return ['forgot', undefined]
-    const protectedPath = path === '/creators' || path.startsWith('/creators/') || path === '/briefs' || path === '/briefs/new' || path.startsWith('/briefs/') || path === '/dashboard' || path === '/projects' || path === '/profile' || path === '/brands'
+    const protectedPath = path === '/creators' || path.startsWith('/creators/') || path === '/briefs' || path === '/briefs/new' || path.startsWith('/briefs/') || path === '/dashboard' || path === '/profile' || path === '/brands'
     if (protectedPath && !isAuthenticated()) { sessionStorage.setItem('genra-auth-destination', path); window.history.replaceState({}, '', '/signin'); return ['signin', undefined] }
     if (path === '/creators') return ['creators', undefined]
     if (path.startsWith('/creators/')) return ['profile', path.split('/')[2]]
