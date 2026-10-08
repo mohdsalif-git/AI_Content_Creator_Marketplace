@@ -196,18 +196,15 @@ function Navbar({ role, setRole, navigate, onStudioClick, onSignIn, onGetStarted
     <nav className="site-nav" aria-label="Main navigation">
       <button className="wordmark" onClick={() => navigate('/')} aria-label="Go to Genra home"><span className="wordmark-mark">G<span>/</span></span><span>Genra</span></button>
       <div className={`nav-links ${menuOpen ? 'open' : ''}`}>
-        <button onClick={() => { navigate('/creators'); setMenuOpen(false) }}>Discover</button>
-        <button onClick={() => { navigate('/creators'); setMenuOpen(false) }}>Creators</button>
-        <button onClick={() => { navigate('/briefs'); setMenuOpen(false) }}>Brands</button>
         <button onClick={() => { onStudioClick(); setMenuOpen(false) }}>AI Studio</button>
-        <button onClick={() => { navigate('/dashboard'); setMenuOpen(false) }}>Projects</button>
+        <button onClick={() => { navigate('/projects'); setMenuOpen(false) }}>Projects</button>
+        <button className="mobile-role" onClick={() => { navigate('/creators'); setMenuOpen(false) }}>Creator</button>
+        <button className="mobile-role" onClick={() => { navigate('/brands'); setMenuOpen(false) }}>Brand</button>
       </div>
       <div className="nav-actions">
-        <div className="role-switch" aria-label="Choose your role">
-          <button className={role === 'Brand' ? 'active' : ''} onClick={() => setRole('Brand')}>Brand</button>
-          <button className={role === 'Creator' ? 'active' : ''} onClick={() => setRole('Creator')}>Creator</button>
-        </div>
-        {loggedIn ? <><button className="nav-signup" onClick={() => navigate('/dashboard')}>{user?.name || 'Dashboard'} <ArrowUpRight size={14} /></button><button className="nav-signup" onClick={() => { signOutDemoUser(); navigate('/') }}>Logout</button></> : <><button className="nav-signup" onClick={onSignIn}>Sign In <ArrowUpRight size={14} /></button><button className="nav-signup" onClick={onGetStarted}>Get Started <ArrowUpRight size={14} /></button></>}
+        <button className="nav-role-link" onClick={() => { navigate('/creators'); setMenuOpen(false) }}>Creator</button>
+        <button className="nav-role-link" onClick={() => { navigate('/brands'); setMenuOpen(false) }}>Brand</button>
+        {loggedIn ? <><button className="nav-signup" onClick={() => navigate('/dashboard')}>{user?.name || 'Dashboard'} <ArrowUpRight size={14} /></button><button className="nav-role-link" onClick={() => navigate('/profile')}>Profile</button><button className="nav-role-link" onClick={() => { signOutDemoUser(); navigate('/') }}>Logout</button></> : <><button className="nav-signup" onClick={onSignIn}>Sign In <ArrowUpRight size={14} /></button><button className="nav-signup" onClick={onGetStarted}>Get Started <ArrowUpRight size={14} /></button></>}
         <button className="menu-button" aria-label="Toggle menu" onClick={() => setMenuOpen(!menuOpen)}><Menu size={18} /></button>
       </div>
     </nav>

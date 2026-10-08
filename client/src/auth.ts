@@ -1,7 +1,7 @@
 export const AUTH_KEY = 'genra-auth'
 export const USER_KEY = 'genra-user'
 
-export type DemoUser = { name: string; email: string }
+export type DemoUser = { name: string; email: string; provider?: 'demo' | 'google'; accountType?: 'Creator' | 'Brand' }
 
 export function isAuthenticated() {
   return localStorage.getItem(AUTH_KEY) === 'authenticated'
