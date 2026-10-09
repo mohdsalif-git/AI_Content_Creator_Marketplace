@@ -38,13 +38,46 @@ export default function Studio({ navigate, notify }: StudioProps) {
     if (!generating) return
     const timer = window.setInterval(() => setProgress((current) => {
       const next = Math.min(current + 25, 100)
-      if (next === 100) { window.clearInterval(timer); setGenerating(false); setGenerated(true); setHistory((items) => [{ id: `history-${Date.now()}`, title: active === 'Video' ? 'New motion study' : 'New visual concept', type: `AI ${active}`, prompt: prompt || 'A new Genra concept', date: 'Just now', model, status: 'Completed', gradient: studioPresets[0].gradient }, ...items]) }
+      if (next === 100) {
+        window.clearInterval(timer)
+        setGenerating(false)
+        setGenerated(true)
+        setHistory((items) => [{ id: `history-${Date.now()}`, title: active === 'Video' ? 'New motion study' : 'New visual concept', type: `AI ${active}`, prompt: prompt || 'A new Genra concept', date: 'Just now', model, status: 'Completed', gradient: studioPresets[0].gradient }, ...items])
+      }
       return next
     }), 420)
     return () => window.clearInterval(timer)
   }, [generating, active, model, prompt])
 
-  const startGeneration = (kind = active) => { if (!isAuthenticated()) { localStorage.setItem('genra-studio-prompt', prompt); sessionStorage.setItem('genra-auth-destination', '/studio'); setAuthPromptOpen(true); return } setActive(kind as StudioMode); setProgress(0); setGenerated(false); setGenerating(true) }
+  const startGeneration = async (kind = active) => {
+    if (!isAuthenticated()) {
+      localStorage.setItem('genra-studio-prompt', prompt)
+      sessionStorage.setItem('genra-auth-destination', '/studio')
+      setAuthPromptOpen(true)
+      return
+    }
+    setActive(kind as StudioMode)
+    setProgress(15)
+    setGenerated(false)
+    setGenerating(true)
+    try {
+      const { api } = await import('../services/api')
+      const result = await api.aiStudio.generate({
+        prompt: prompt || 'A new visual concept',
+        model,
+        ratio,
+        style,
+        kind: String(kind)
+      })
+      if (result) {
+        notify('AI Studio concept generated from backend')
+      }
+    } catch (err: any) {
+      if (err.status === 401) {
+        setAuthPromptOpen(true)
+      }
+    }
+  }
   const usePreset = (preset: typeof studioPresets[number]) => { setPrompt(preset.prompt); setStyle(preset.style); setActive('Create'); notify(`${preset.title} preset loaded`) }
   const displayGradient = useMemo(() => generated ? studioPresets[0].gradient : 'linear-gradient(135deg,#f4f5fa 0%,#e7ecf9 46%,#fbfbff 100%)', [generated])
 

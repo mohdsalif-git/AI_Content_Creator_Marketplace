@@ -10,17 +10,25 @@
     "seed": "node server/seed.mjs"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.2",
     "@vitejs/plugin-react": "latest",
     "concurrently": "latest",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "dotenv": "^18.0.6",
     "express": "latest",
+    "express-rate-limit": "^8.7.1",
     "framer-motion": "latest",
+    "google-auth-library": "^11.2.0",
+    "hash-wasm": "^4.12.0",
+    "jsonwebtoken": "^9.0.3",
     "lucide-react": "latest",
     "mongoose": "latest",
     "react": "latest",
     "react-dom": "latest",
     "react-router-dom": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
