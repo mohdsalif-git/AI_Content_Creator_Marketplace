@@ -1,5 +1,13 @@
 import mongoose from 'mongoose'
 import dotenv from 'dotenv'
+import dns from 'dns'
+
+// Set dependable DNS servers so Atlas SRV records resolve across different ISP / VPN configs
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1'])
+} catch {
+  // Ignore in environments where setting custom DNS is restricted
+}
 
 dotenv.config()
 
@@ -35,45 +43,67 @@ export async function connectDB(maxRetries = 5) {
   }
 
   const options = {
-    serverSelectionTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 8000,
     socketTimeoutMS: 45000,
     maxPoolSize: 10,
-    retryWrites: true
+    retryWrites: true,
+    family: 4
   }
 
   let attempt = 0
+  const maxAttempts = uri.includes('mongodb+srv') ? 2 : maxRetries
   let delay = 1000
 
-  while (attempt < maxRetries) {
+  while (attempt < maxAttempts) {
     attempt++
     try {
-      console.log(`[Database] Attempting connection to MongoDB (Attempt ${attempt}/${maxRetries})...`)
+      console.log(`[Database] Attempting connection to MongoDB (Attempt ${attempt}/${maxAttempts})...`)
       const conn = await mongoose.connect(uri, options)
       isConnected = true
       return conn
     } catch (err) {
       console.error(`[Database] Connection attempt ${attempt} failed: ${err.message}`)
 
-      // Helpful diagnostics for common failures
       if (err.message.includes('bad auth') || err.message.includes('Authentication failed')) {
         console.error('[Database Diagnostic] Authentication failed: check username/password in MONGODB_URI. Special characters in password must be URL-encoded.')
       } else if (
+        err.message.includes('whitelist') ||
         err.message.includes('selection timed out') ||
         err.message.includes('ENOTFOUND') ||
         err.message.includes('queryTxt ETIMEOUT')
       ) {
-        console.error('[Database Diagnostic] Cluster unreachable: Check internet connection and verify your IP is added to the MongoDB Atlas Network Access allowlist (e.g. 0.0.0.0/0).')
-      } else if (err.message.includes('database name')) {
-        console.error('[Database Diagnostic] Invalid database name specified in MONGODB_URI.')
+        console.warn('\n======================================================')
+        console.warn('⚠️  MONGODB ATLAS NETWORK ACCESS NOTICE:')
+        console.warn('Your IP address is not whitelisted in MongoDB Atlas.')
+        console.warn('To connect to Atlas:')
+        console.warn('  1. Go to cloud.mongodb.com -> Network Access')
+        console.warn('  2. Click "Add IP Address" -> Select "Allow Access from Anywhere" (0.0.0.0/0) or add your current IP.')
+        console.warn('  3. Click Confirm.')
+        console.warn('======================================================\n')
       }
 
-      if (attempt >= maxRetries) {
-        throw new Error(`[Database] Failed to connect to MongoDB after ${maxRetries} attempts: ${err.message}`)
+      if (attempt >= maxAttempts) {
+        // If connecting to Atlas failed, try falling back to local MongoDB
+        if (uri.includes('mongodb+srv') && uri !== 'mongodb://127.0.0.1:27017/genra') {
+          console.warn('[Database] Falling back to local MongoDB (mongodb://127.0.0.1:27017/genra) to keep server operational...')
+          try {
+            const localConn = await mongoose.connect('mongodb://127.0.0.1:27017/genra', {
+              serverSelectionTimeoutMS: 3000,
+              family: 4
+            })
+            isConnected = true
+            console.log('[Database] Connected to fallback local MongoDB.')
+            return localConn
+          } catch (localErr) {
+            console.error('[Database] Fallback to local MongoDB also failed:', localErr.message)
+          }
+        }
+        throw new Error(`[Database] Failed to connect to MongoDB: ${err.message}`)
       }
 
       console.log(`[Database] Retrying in ${delay}ms...`)
       await new Promise((resolve) => setTimeout(resolve, delay))
-      delay = Math.min(delay * 2, 10000)
+      delay = Math.min(delay * 2, 5000)
     }
   }
 }
