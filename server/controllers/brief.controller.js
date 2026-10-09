@@ -55,8 +55,8 @@ export async function getBriefById(req, res, next) {
       brief = await Brief.findById(id)
     }
     if (!brief) {
-      // Fallback for demo brief slugs
-      brief = await Brief.findOne({ $or: [{ _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : null }, { title: new RegExp(id.replace(/-/g, ' '), 'i') }] })
+      // Fallback for demo brief slugs or titles
+      brief = await Brief.findOne({ title: new RegExp(id.replace(/-/g, ' '), 'i') })
     }
     if (!brief) {
       // Return first brief if in dev demo mode

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowUpRight, Check, ChevronRight, Clock3, Copy, Download, Film, Image as ImageIcon, Layers3, Link2, Play, Plus, RotateCcw, Send, Sparkles, Upload, WandSparkles, X, Zap } from 'lucide-react'
 import { videoAssets } from '../data/assets'
 import { studioHistory, studioModels, studioPresets, studioProjects, type StudioTab } from '../data/studioData'
-import { isAuthenticated } from '../auth'
+import { isAuthenticated, getUser } from '../auth'
+import { api } from '../services/api'
+import { io } from 'socket.io-client'
 
 type StudioProps = { navigate: (path: string) => void; notify: (message: string) => void }
 type StudioMode = 'Create' | 'Image' | 'Video' | 'Motion' | 'Edit' | 'History' | 'Presets' | 'Workflow' | 'Projects'
@@ -20,11 +22,35 @@ export default function Studio({ navigate, notify }: StudioProps) {
   const [generating, setGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
   const [generated, setGenerated] = useState(false)
+  const [resultUrl, setResultUrl] = useState('')
+  const [lastKind, setLastKind] = useState<'image' | 'video'>('image')
   const [selectedTool, setSelectedTool] = useState('Restyle')
   const [workflowNode, setWorkflowNode] = useState('Prompt')
   const [history, setHistory] = useState(studioHistory)
   const [creator, setCreator] = useState<{ name: string; specialty: string; tools: string[] } | null>(null)
   const [authPromptOpen, setAuthPromptOpen] = useState(false)
+
+  // Load real history from backend if authenticated
+  useEffect(() => {
+    if (isAuthenticated()) {
+      api.aiStudio.getJobs().then((jobs) => {
+        if (Array.isArray(jobs) && jobs.length > 0) {
+          const formatted = jobs.map((j) => ({
+            id: j.id || j._id,
+            title: j.type === 'video' ? 'AI Video Study' : 'AI Visual Concept',
+            type: j.type === 'video' ? 'AI Video' : 'AI Image',
+            prompt: j.prompt,
+            date: new Date(j.createdAt).toLocaleDateString(),
+            model: j.provider || 'Seedream',
+            status: j.status === 'completed' ? 'Completed' : j.status === 'failed' ? 'Failed' : 'Processing',
+            gradient: studioPresets[0].gradient,
+            resultUrl: j.resultUrl
+          }))
+          setHistory(formatted)
+        }
+      }).catch(() => {})
+    }
+  }, [active, generated])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -34,20 +60,36 @@ export default function Studio({ navigate, notify }: StudioProps) {
     if (pendingPrompt) { setPrompt(pendingPrompt); localStorage.removeItem('genra-studio-prompt') }
   }, [])
 
+  // Socket.IO real-time updates for generation jobs
   useEffect(() => {
-    if (!generating) return
-    const timer = window.setInterval(() => setProgress((current) => {
-      const next = Math.min(current + 25, 100)
-      if (next === 100) {
-        window.clearInterval(timer)
+    const currentUser = getUser()
+    if (!currentUser?.id) return
+
+    const socketUrl = window.location.origin
+    const socket = io(socketUrl, {
+      query: { userId: currentUser.id },
+      transports: ['websocket', 'polling']
+    })
+
+    socket.on('generation:update', (job: any) => {
+      if (job.status === 'processing') {
+        setProgress((prev) => Math.max(prev, 60))
+      } else if (job.status === 'completed') {
+        setProgress(100)
         setGenerating(false)
         setGenerated(true)
-        setHistory((items) => [{ id: `history-${Date.now()}`, title: active === 'Video' ? 'New motion study' : 'New visual concept', type: `AI ${active}`, prompt: prompt || 'A new Genra concept', date: 'Just now', model, status: 'Completed', gradient: studioPresets[0].gradient }, ...items])
+        if (job.resultUrl) setResultUrl(job.resultUrl)
+        notify(`${job.type === 'video' ? 'Video' : 'Image'} generation completed!`)
+      } else if (job.status === 'failed') {
+        setGenerating(false)
+        notify(`Generation failed: ${job.error || 'Unknown error'}`)
       }
-      return next
-    }), 420)
-    return () => window.clearInterval(timer)
-  }, [generating, active, model, prompt])
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [notify])
 
   const startGeneration = async (kind = active) => {
     if (!isAuthenticated()) {
@@ -56,28 +98,88 @@ export default function Studio({ navigate, notify }: StudioProps) {
       setAuthPromptOpen(true)
       return
     }
+
+    const isVideo = kind === 'Video' || kind === 'Motion' || active === 'Video' || active === 'Motion'
+    setLastKind(isVideo ? 'video' : 'image')
     setActive(kind as StudioMode)
     setProgress(15)
     setGenerated(false)
     setGenerating(true)
+    setResultUrl('')
+
     try {
-      const { api } = await import('../services/api')
-      const result = await api.aiStudio.generate({
-        prompt: prompt || 'A new visual concept',
-        model,
-        ratio,
-        style,
-        kind: String(kind)
-      })
-      if (result) {
-        notify('AI Studio concept generated from backend')
+      let jobResponse: any
+      const trimmedPrompt = prompt.trim() || 'A high-contrast cinematic product visual with minimal luxury aesthetic.'
+
+      if (isVideo) {
+        jobResponse = await api.aiStudio.generateVideo({
+          prompt: trimmedPrompt,
+          aspectRatio: ratio,
+          duration: 5
+        })
+      } else {
+        jobResponse = await api.aiStudio.generateImage({
+          prompt: trimmedPrompt,
+          aspectRatio: ratio,
+          style
+        })
+      }
+
+      notify(`Generation job queued: ${jobResponse.id}`)
+      setProgress(30)
+
+      // Fallback polling in case socket is delayed
+      const jobId = jobResponse.id || jobResponse.jobId
+      if (jobId) {
+        const interval = window.setInterval(async () => {
+          try {
+            const currentJob = await api.aiStudio.getJobById(jobId)
+            if (currentJob.status === 'processing') {
+              setProgress((p) => Math.min(Math.max(p, 65), 90))
+            } else if (currentJob.status === 'completed') {
+              window.clearInterval(interval)
+              setProgress(100)
+              setGenerating(false)
+              setGenerated(true)
+              if (currentJob.resultUrl) setResultUrl(currentJob.resultUrl)
+              setHistory((items) => [
+                {
+                  id: currentJob.id || `history-${Date.now()}`,
+                  title: isVideo ? 'New motion study' : 'New visual concept',
+                  type: isVideo ? 'AI Video' : 'AI Image',
+                  prompt: trimmedPrompt,
+                  date: 'Just now',
+                  model: isVideo ? 'Seedance' : 'Seedream',
+                  status: 'Completed',
+                  gradient: studioPresets[0].gradient,
+                  resultUrl: currentJob.resultUrl
+                },
+                ...items
+              ])
+              notify('Generation completed!')
+            } else if (currentJob.status === 'failed') {
+              window.clearInterval(interval)
+              setGenerating(false)
+              notify(`Generation failed: ${currentJob.error || 'Server error'}`)
+            }
+          } catch (e) {
+            // continue polling
+          }
+        }, 1500)
+
+        // Safety timeout after 90 seconds
+        setTimeout(() => window.clearInterval(interval), 90000)
       }
     } catch (err: any) {
+      setGenerating(false)
       if (err.status === 401) {
         setAuthPromptOpen(true)
+      } else {
+        notify(`Error: ${err.message || 'Failed to start generation'}`)
       }
     }
   }
+
   const usePreset = (preset: typeof studioPresets[number]) => { setPrompt(preset.prompt); setStyle(preset.style); setActive('Create'); notify(`${preset.title} preset loaded`) }
   const displayGradient = useMemo(() => generated ? studioPresets[0].gradient : 'linear-gradient(135deg,#f4f5fa 0%,#e7ecf9 46%,#fbfbff 100%)', [generated])
 
@@ -86,7 +188,7 @@ export default function Studio({ navigate, notify }: StudioProps) {
     <div className="studio-header" id="studio-workspace"><div className="studio-header-inner"><div className="studio-brand"><span className="studio-brand-mark">G/</span><div><strong>GENRA AI STUDIO</strong><span>Creative workspace</span></div></div><div className="studio-tabs" role="tablist" aria-label="AI Studio tools">{tabs.map((tab) => <button key={tab} className={active === tab ? 'active' : ''} onClick={() => setActive(tab)} role="tab" aria-selected={active === tab}>{tab}</button>)}</div><div className="studio-account"><span><Zap size={14} /> 120 credits</span><button onClick={() => setActive('Projects')}>Projects</button></div></div></div>
     <main className="studio-main section-pad">
       {creator && <div className="studio-creator-connection glass-card"><div><span className="section-kicker">WORKING WITH</span><strong>{creator.name}</strong><span>{creator.specialty}</span><div className="studio-creator-tools">{creator.tools.map((tool) => <span key={tool}>{tool}</span>)}</div></div><button className="gradient-button" onClick={() => notify(`Studio linked with ${creator.name}`)}>Create with this Creator <Link2 size={15} /></button></div>}
-      {active === 'History' ? <HistoryView history={history} setHistory={setHistory} notify={notify} /> : active === 'Presets' ? <PresetsView usePreset={usePreset} /> : active === 'Workflow' ? <WorkflowView selected={workflowNode} setSelected={setWorkflowNode} /> : active === 'Edit' ? <EditView selectedTool={selectedTool} setSelectedTool={setSelectedTool} generated={generated} setGenerated={setGenerated} notify={notify} /> : active === 'Motion' ? <MotionView startGeneration={startGeneration} generated={generated} generating={generating} progress={progress} /> : active === 'Video' ? <VideoView prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} notify={notify} /> : active === 'Image' ? <ImageView prompt={prompt} setPrompt={setPrompt} style={style} setStyle={setStyle} model={model} setModel={setModel} ratio={ratio} setRatio={setRatio} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} notify={notify} /> : active === 'Projects' ? <ProjectsView navigate={navigate} notify={notify} /> : <CreateView prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} ratio={ratio} setRatio={setRatio} quality={quality} setQuality={setQuality} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} displayGradient={displayGradient} setActive={setActive} usePreset={usePreset} notify={notify} navigate={navigate} />}
+      {active === 'History' ? <HistoryView history={history} setHistory={setHistory} notify={notify} /> : active === 'Presets' ? <PresetsView usePreset={usePreset} /> : active === 'Workflow' ? <WorkflowView selected={workflowNode} setSelected={setWorkflowNode} /> : active === 'Edit' ? <EditView selectedTool={selectedTool} setSelectedTool={setSelectedTool} generated={generated} setGenerated={setGenerated} notify={notify} /> : active === 'Motion' ? <MotionView startGeneration={startGeneration} generated={generated} generating={generating} progress={progress} resultUrl={resultUrl} /> : active === 'Video' ? <VideoView prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} resultUrl={resultUrl} notify={notify} navigate={navigate} /> : active === 'Image' ? <ImageView prompt={prompt} setPrompt={setPrompt} style={style} setStyle={setStyle} model={model} setModel={setModel} ratio={ratio} setRatio={setRatio} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} resultUrl={resultUrl} notify={notify} navigate={navigate} /> : active === 'Projects' ? <ProjectsView navigate={navigate} notify={notify} /> : <CreateView prompt={prompt} setPrompt={setPrompt} model={model} setModel={setModel} ratio={ratio} setRatio={setRatio} quality={quality} setQuality={setQuality} startGeneration={startGeneration} generating={generating} progress={progress} generated={generated} resultUrl={resultUrl} lastKind={lastKind} displayGradient={displayGradient} setActive={setActive} usePreset={usePreset} notify={notify} navigate={navigate} />}
       {(['Create', 'Image', 'Video', 'Motion', 'Edit'] as StudioMode[]).includes(active) && <div className="studio-lower-grid"><PresetsView usePreset={usePreset} /><WorkflowView selected={workflowNode} setSelected={setWorkflowNode} /></div>}
       {active !== 'History' && active !== 'Projects' && active !== 'Presets' && active !== 'Workflow' && <div className="studio-differentiator"><div><span className="section-kicker">THE GENRA DIFFERENCE</span><h2>Don't just see what an AI creator makes.<br /><em>See how they work and what rights you get.</em></h2></div><div className="studio-signal-list">{['TOOLS', 'SKILLS', 'WORKFLOW', 'PORTFOLIO', 'COMMERCIAL RIGHTS'].map((item, index) => <span key={item}><b>0{index + 1}</b>{item}</span>)}</div></div>}
     </main>
@@ -96,18 +198,104 @@ export default function Studio({ navigate, notify }: StudioProps) {
 
 function StudioAuthPrompt({ onClose, onSignIn, onCreateAccount, onGoogle }: { onClose: () => void; onSignIn: () => void; onCreateAccount: () => void; onGoogle: () => void }) { return <div className="studio-auth-backdrop" role="dialog" aria-modal="true" aria-labelledby="studio-auth-title"><div className="studio-auth-card"><button className="studio-auth-close" onClick={onClose} aria-label="Close sign in prompt"><X size={17} /></button><span className="studio-auth-mark">G/</span><span className="home-kicker">GENRA / AI STUDIO</span><h2 id="studio-auth-title">Sign in to create with Genra</h2><p>Create an account or sign in to generate AI content.</p><button className="home-primary studio-auth-action" onClick={onSignIn}>Sign In <ArrowUpRight size={15} /></button><button className="home-secondary studio-auth-action" onClick={onCreateAccount}>Create Account <ArrowUpRight size={15} /></button><button className="auth-google" onClick={onGoogle}>Continue with Google</button></div></div> }
 
-function StudioWorkspace({ title, subtitle, children, preview, previewLabel = 'YOUR CANVAS IS READY' }: { title: string; subtitle: string; children: React.ReactNode; preview: React.ReactNode; previewLabel?: string }) { return <section className="studio-workspace"><div className="studio-control-panel"><span className="section-kicker">{title}</span><h2>{subtitle}</h2>{children}</div><div className="studio-preview-panel"><div className="studio-preview-head"><span>{previewLabel}</span><span className="studio-live"><i /> LOCAL DEMO</span></div>{preview}</div></section> }
+function StudioWorkspace({ title, subtitle, children, preview, previewLabel = 'YOUR CANVAS IS READY' }: { title: string; subtitle: string; children: React.ReactNode; preview: React.ReactNode; previewLabel?: string }) { return <section className="studio-workspace"><div className="studio-control-panel"><span className="section-kicker">{title}</span><h2>{subtitle}</h2>{children}</div><div className="studio-preview-panel"><div className="studio-preview-head"><span>{previewLabel}</span><span className="studio-live"><i /> LIVE PREVIEW</span></div>{preview}</div></section> }
 function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) { return <label className="studio-control"><span>{label}</span>{children}</label> }
 function SelectControl({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: string[] }) { return <select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select> }
-function GenerateButton({ label, onClick, generating, progress }: { label: string; onClick: () => void; generating: boolean; progress: number }) { return <button className="gradient-button studio-generate" onClick={onClick} disabled={generating}>{generating ? `Generating... ${progress}%` : <>{label} <Sparkles size={15} /></>}</button> }
-function PreviewArt({ gradient, generated, video = false }: { gradient: string; generated: boolean; video?: boolean }) { return <div className="studio-canvas" style={{ background: gradient }}>{video && <video autoPlay muted loop playsInline src={videoAssets.motion} />}{!video && <><div className="canvas-grid" /><div className="canvas-orb" /><div className="canvas-caption">{generated ? 'GENRA / GENERATED CONCEPT' : 'Your canvas is ready.'}</div></>}{generated && <div className="canvas-result"><Check size={14} /> Concept ready</div>}</div> }
-function CreateView({ prompt, setPrompt, model, setModel, ratio, setRatio, quality, setQuality, startGeneration, generating, progress, generated, displayGradient, setActive, usePreset, notify, navigate }: any) { return <StudioWorkspace title="CREATE" subtitle="What do you want to create?" preview={<><PreviewArt gradient={displayGradient} generated={generated} /><PreviewActions generated={generated} notify={notify} navigate={navigate} /></>}><textarea className="studio-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe your visual idea..." aria-label="Describe your visual idea" /><p className="studio-example">“A cinematic product film for a futuristic skincare brand, soft daylight, glass reflections, minimal luxury aesthetic.”</p><div className="studio-upload"><Upload size={16} /><span>Reference Image</span><button onClick={() => notify('Reference image upload is ready in the local demo')}>Upload image</button></div><div className="studio-control-grid"><ControlGroup label="Model"><SelectControl value={model} onChange={setModel} options={studioModels.create} /></ControlGroup><ControlGroup label="Aspect Ratio"><SelectControl value={ratio} onChange={setRatio} options={['9:16', '16:9', '1:1', '4:5']} /></ControlGroup><ControlGroup label="Quality"><SelectControl value={quality} onChange={setQuality} options={['Standard', 'High', 'Ultra']} /></ControlGroup></div><GenerateButton label="Generate" onClick={() => startGeneration('Create')} generating={generating} progress={progress} /><div className="studio-inline-links"><button onClick={() => setActive('Image')}>Create an image <ChevronRight size={14} /></button><button onClick={() => usePreset(studioPresets[0])}>Use a preset <ChevronRight size={14} /></button></div></StudioWorkspace> }
-function ImageView({ prompt, setPrompt, style, setStyle, model, setModel, ratio, setRatio, startGeneration, generating, progress, generated, notify }: any) { return <StudioWorkspace title="AI IMAGE" subtitle="Make the first frame impossible to ignore." preview={<PreviewArt gradient={studioPresets[1].gradient} generated={generated} />}><textarea className="studio-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe the image you want to make..." aria-label="Image prompt" /><div className="studio-upload"><Upload size={16} /><span>Reference Image</span><button onClick={() => notify('Reference image upload is ready in the local demo')}>Upload image</button></div><div className="studio-control-grid"><ControlGroup label="Style"><SelectControl value={style} onChange={setStyle} options={['Cinematic', 'Editorial', 'Product', 'Fashion', 'Minimal', 'Surreal']} /></ControlGroup><ControlGroup label="Aspect Ratio"><SelectControl value={ratio} onChange={setRatio} options={['1:1', '4:5', '9:16', '16:9']} /></ControlGroup><ControlGroup label="Model"><SelectControl value={model} onChange={setModel} options={studioModels.image} /></ControlGroup></div><GenerateButton label="Generate Image" onClick={() => startGeneration('Image')} generating={generating} progress={progress} /></StudioWorkspace> }
-function VideoView({ prompt, setPrompt, model, setModel, startGeneration, generating, progress, generated, notify }: any) { return <StudioWorkspace title="AI VIDEO" subtitle="Describe the motion." preview={<PreviewArt gradient={studioPresets[4].gradient} generated={generated} video={generated} />}><div className="studio-upload"><Upload size={16} /><span>Start Image</span><button onClick={() => notify('Start image upload is ready in the local demo')}>Upload / Select image</button></div><textarea className="studio-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe the motion..." aria-label="Video prompt" /><p className="studio-example">“Slow cinematic camera push toward the product while reflections move across the glass.”</p><div className="studio-control-grid"><ControlGroup label="Model"><SelectControl value={model} onChange={setModel} options={studioModels.video} /></ControlGroup><ControlGroup label="Duration"><SelectControl value="5s" onChange={() => undefined} options={['5s', '8s', '12s']} /></ControlGroup><ControlGroup label="Aspect"><SelectControl value="9:16" onChange={() => undefined} options={['9:16', '16:9', '1:1']} /></ControlGroup><ControlGroup label="Motion Strength"><SelectControl value="Medium" onChange={() => undefined} options={['Low', 'Medium', 'High']} /></ControlGroup></div><GenerateButton label="Generate Video" onClick={() => startGeneration('Video')} generating={generating} progress={progress} /></StudioWorkspace> }
-function MotionView({ startGeneration, generated, generating, progress }: any) { return <StudioWorkspace title="MOTION CONTROL" subtitle="Bring your still image to life." preview={<PreviewArt gradient={studioPresets[4].gradient} generated={generated} video={generated} />}><div className="motion-cards"><div><span>01</span><strong>Motion Reference</strong><small>Upload video</small></div><div><span>02</span><strong>Subject</strong><small>Upload image</small></div><div><span>03</span><strong>Result</strong><small>Generated animation</small></div></div><div className="studio-control-grid"><ControlGroup label="Motion Strength"><SelectControl value="Medium" onChange={() => undefined} options={['Low', 'Medium', 'High']} /></ControlGroup><ControlGroup label="Camera Movement"><SelectControl value="Orbit" onChange={() => undefined} options={['Static', 'Pan', 'Tilt', 'Zoom', 'Orbit', 'Handheld']} /></ControlGroup><ControlGroup label="Speed"><SelectControl value="1x" onChange={() => undefined} options={['0.5x', '1x', '1.5x']} /></ControlGroup><ControlGroup label="Loop"><SelectControl value="Off" onChange={() => undefined} options={['Off', 'On']} /></ControlGroup></div><GenerateButton label="Generate Motion" onClick={() => startGeneration('Motion')} generating={generating} progress={progress} /></StudioWorkspace> }
-function EditView({ selectedTool, setSelectedTool, generated, setGenerated, notify }: any) { const tools = ['Restyle', 'Remove Object', 'Change Background', 'Relight', 'Extend', 'Upscale']; return <StudioWorkspace title="AI EDIT" subtitle="Change your visual with a simple instruction." preview={<PreviewArt gradient={studioPresets[2].gradient} generated={generated} />}><div className="edit-preview-label">EDITING / CONCEPT 01</div><textarea className="studio-prompt" defaultValue="Change the background to a soft sunset studio." aria-label="Edit prompt" /><div className="edit-tools">{tools.map((tool) => <button className={selectedTool === tool ? 'selected' : ''} key={tool} onClick={() => setSelectedTool(tool)}>{tool}</button>)}</div><button className="gradient-button studio-generate" onClick={() => { setGenerated(true); notify(`${selectedTool} applied to concept`) }}>Apply Edit <WandSparkles size={15} /></button></StudioWorkspace> }
-function PresetsView({ usePreset }: { usePreset: (preset: typeof studioPresets[number]) => void }) { return <section className="studio-subsection"><div className="studio-subsection-head"><div><span className="section-kicker">CREATIVE PRESETS</span><h2>Start with a visual direction.</h2></div><span>08 directions</span></div><div className="studio-presets">{studioPresets.slice(0, 4).map((preset) => <article className="studio-preset glass-card" key={preset.title}><div style={{ background: preset.gradient }} /><strong>{preset.title}</strong><p>{preset.description}</p><button onClick={() => usePreset(preset)}>Use preset <ArrowUpRight size={13} /></button></article>)}</div></section> }
-function WorkflowView({ selected, setSelected }: { selected: string; setSelected: (node: string) => void }) { return <section className="studio-subsection workflow-section"><div className="studio-subsection-head"><div><span className="section-kicker">CREATIVE WORKFLOW</span><h2>Build your creative flow.</h2></div><span>Prompt → Image → Motion → Edit → Final</span></div><div className="workflow-canvas">{workflowNodes.map((node, index) => <button key={node} className={selected === node ? 'selected' : ''} onClick={() => setSelected(node)}><span>{index + 1}</span>{node}{index < workflowNodes.length - 1 && <i />}</button>)}</div><div className="workflow-settings"><strong>{selected}</strong><span>{selected === 'Prompt' ? 'Define the creative intent and visual direction.' : `Tune the ${selected.toLowerCase()} stage before moving forward.`}</span></div></section> }
-function HistoryView({ history, setHistory, notify }: any) { return <section className="studio-list-view"><div className="studio-subsection-head"><div><span className="section-kicker">GENERATION HISTORY</span><h2>Everything you’ve made, in one place.</h2></div><button className="outline-button" onClick={() => notify('History synced locally')}><Clock3 size={15} /> Local history</button></div><div className="studio-history-list">{history.map((item: any) => <article className="studio-history-row glass-card" key={item.id}><div className="studio-history-art" style={{ background: item.gradient }}><Play size={16} /></div><div><strong>{item.title}</strong><span>{item.type} · {item.model}</span><p>{item.prompt}</p></div><time>{item.date}<br /><b><Check size={11} /> {item.status}</b></time><div className="studio-row-actions"><button aria-label="Open history item" onClick={() => notify(`Opened ${item.title}`)}><ArrowUpRight size={15} /></button><button aria-label="Reuse history item" onClick={() => notify('Prompt reused in Create')}><RotateCcw size={15} /></button><button aria-label="Delete history item" onClick={() => setHistory((items: any[]) => items.filter((entry) => entry.id !== item.id))}><X size={15} /></button></div></article>)}</div></section> }
-function ProjectsView({ navigate, notify }: StudioProps) { return <section className="studio-list-view"><div className="studio-subsection-head"><div><span className="section-kicker">MY STUDIO PROJECTS</span><h2>Keep the concept moving.</h2></div><button className="gradient-button" onClick={() => notify('New Studio project started')}><Plus size={15} /> New project</button></div><div className="studio-projects-grid">{studioProjects.map((project) => <article className="studio-project-card glass-card" key={project.id}><div className="studio-project-art" style={{ background: project.gradient }}><span>{project.type}</span><Play size={16} /></div><div><span className="section-kicker">{project.status}</span><h3>{project.title}</h3><p>{project.creator} · Last edited {project.lastEdited}</p><div><button onClick={() => notify(`Opened ${project.title}`)}>Open</button><button onClick={() => notify(`Continuing ${project.title}`)}>Continue</button><button onClick={() => navigate('/briefs/new')}>Create Brief</button></div></div></article>)}</div></section> }
-function PreviewActions({ generated, notify, navigate }: { generated: boolean; notify: (message: string) => void; navigate: (path: string) => void }) { return generated ? <div className="studio-preview-actions"><button onClick={() => notify('Concept saved to project')}><Copy size={14} /> Save to Project</button><button onClick={() => navigate('/creators')}><ArrowUpRight size={14} /> Find a Creator</button><button onClick={() => navigate('/briefs/new')}><Send size={14} /> Create Brief</button><button onClick={() => notify('Concept sent to creator')}><Link2 size={14} /> Send to Creator</button></div> : <div className="studio-preview-empty"><ImageIcon size={20} /><span>Your canvas is ready.</span><small>Generate a concept to unlock the marketplace handoff.</small></div> }
+function GenerateButton({ label, onClick, generating, progress }: { label: string; onClick: () => void; generating: boolean; progress: number }) { return <button className="gradient-button studio-generate" onClick={onClick} disabled={generating}>{generating ? `Processing with ModelArk... ${progress}%` : <>{label} <Sparkles size={15} /></>}</button> }
+
+function PreviewArt({ gradient, generated, resultUrl, isVideo = false }: { gradient: string; generated: boolean; resultUrl?: string; isVideo?: boolean }) {
+  return (
+    <div className="studio-canvas" style={{ background: gradient, overflow: 'hidden', position: 'relative' }}>
+      {generated && resultUrl ? (
+        isVideo ? (
+          <video autoPlay muted loop playsInline controls src={resultUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <img src={resultUrl} alt="Generated Concept" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        )
+      ) : isVideo && generated ? (
+        <video autoPlay muted loop playsInline src={videoAssets.motion} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <>
+          <div className="canvas-grid" />
+          <div className="canvas-orb" />
+          <div className="canvas-caption">{generated ? 'GENRA / GENERATED CONCEPT' : 'Your canvas is ready.'}</div>
+        </>
+      )}
+      {generated && <div className="canvas-result"><Check size={14} /> Concept ready</div>}
+    </div>
+  )
+}
+
+function CreateView({ prompt, setPrompt, model, setModel, ratio, setRatio, quality, setQuality, startGeneration, generating, progress, generated, resultUrl, lastKind, displayGradient, setActive, usePreset, notify, navigate }: any) {
+  return <StudioWorkspace title="CREATE" subtitle="What do you want to create?" preview={<><PreviewArt gradient={displayGradient} generated={generated} resultUrl={resultUrl} isVideo={lastKind === 'video'} /><PreviewActions generated={generated} resultUrl={resultUrl} notify={notify} navigate={navigate} /></>}><textarea className="studio-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe your visual idea..." aria-label="Describe your visual idea" /><p className="studio-example">“A cinematic product film for a futuristic skincare brand, soft daylight, glass reflections, minimal luxury aesthetic.”</p><div className="studio-upload"><Upload size={16} /><span>Reference Image</span><button onClick={() => notify('Reference image upload is ready')}>Upload image</button></div><div className="studio-control-grid"><ControlGroup label="Model"><SelectControl value={model} onChange={setModel} options={studioModels.create} /></ControlGroup><ControlGroup label="Aspect Ratio"><SelectControl value={ratio} onChange={setRatio} options={['9:16', '16:9', '1:1', '4:5']} /></ControlGroup><ControlGroup label="Quality"><SelectControl value={quality} onChange={setQuality} options={['Standard', 'High', 'Ultra']} /></ControlGroup></div><GenerateButton label="Generate" onClick={() => startGeneration('Create')} generating={generating} progress={progress} /><div className="studio-inline-links"><button onClick={() => setActive('Image')}>Create an image <ChevronRight size={14} /></button><button onClick={() => usePreset(studioPresets[0])}>Use a preset <ChevronRight size={14} /></button></div></StudioWorkspace>
+}
+
+function ImageView({ prompt, setPrompt, style, setStyle, model, setModel, ratio, setRatio, startGeneration, generating, progress, generated, resultUrl, notify, navigate }: any) {
+  return <StudioWorkspace title="AI IMAGE" subtitle="Make the first frame impossible to ignore." preview={<><PreviewArt gradient={studioPresets[1].gradient} generated={generated} resultUrl={resultUrl} isVideo={false} /><PreviewActions generated={generated} resultUrl={resultUrl} notify={notify} navigate={navigate} /></>}><textarea className="studio-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe the image you want to make..." aria-label="Image prompt" /><div className="studio-upload"><Upload size={16} /><span>Reference Image</span><button onClick={() => notify('Reference image upload ready')}>Upload image</button></div><div className="studio-control-grid"><ControlGroup label="Style"><SelectControl value={style} onChange={setStyle} options={['Cinematic', 'Editorial', 'Product', 'Fashion', 'Minimal', 'Surreal']} /></ControlGroup><ControlGroup label="Aspect Ratio"><SelectControl value={ratio} onChange={setRatio} options={['1:1', '4:5', '9:16', '16:9']} /></ControlGroup><ControlGroup label="Model"><SelectControl value={model} onChange={setModel} options={studioModels.image} /></ControlGroup></div><GenerateButton label="Generate Image" onClick={() => startGeneration('Image')} generating={generating} progress={progress} /></StudioWorkspace>
+}
+
+function VideoView({ prompt, setPrompt, model, setModel, startGeneration, generating, progress, generated, resultUrl, notify, navigate }: any) {
+  return <StudioWorkspace title="AI VIDEO" subtitle="Describe the motion." preview={<><PreviewArt gradient={studioPresets[4].gradient} generated={generated} resultUrl={resultUrl} isVideo={true} /><PreviewActions generated={generated} resultUrl={resultUrl} notify={notify} navigate={navigate} /></>}><div className="studio-upload"><Upload size={16} /><span>Start Image</span><button onClick={() => notify('Start image upload ready')}>Upload / Select image</button></div><textarea className="studio-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Describe the motion..." aria-label="Video prompt" /><p className="studio-example">“Slow cinematic camera push toward the product while reflections move across the glass.”</p><div className="studio-control-grid"><ControlGroup label="Model"><SelectControl value={model} onChange={setModel} options={studioModels.video} /></ControlGroup><ControlGroup label="Duration"><SelectControl value="5s" onChange={() => undefined} options={['5s', '8s', '12s']} /></ControlGroup><ControlGroup label="Aspect"><SelectControl value="9:16" onChange={() => undefined} options={['9:16', '16:9', '1:1']} /></ControlGroup><ControlGroup label="Motion Strength"><SelectControl value="Medium" onChange={() => undefined} options={['Low', 'Medium', 'High']} /></ControlGroup></div><GenerateButton label="Generate Video" onClick={() => startGeneration('Video')} generating={generating} progress={progress} /></StudioWorkspace>
+}
+
+function MotionView({ startGeneration, generated, generating, progress, resultUrl }: any) {
+  return <StudioWorkspace title="MOTION CONTROL" subtitle="Bring your still image to life." preview={<PreviewArt gradient={studioPresets[4].gradient} generated={generated} resultUrl={resultUrl} isVideo={true} />}><div className="motion-cards"><div><span>01</span><strong>Motion Reference</strong><small>Upload video</small></div><div><span>02</span><strong>Subject</strong><small>Upload image</small></div><div><span>03</span><strong>Result</strong><small>Generated animation</small></div></div><div className="studio-control-grid"><ControlGroup label="Motion Strength"><SelectControl value="Medium" onChange={() => undefined} options={['Low', 'Medium', 'High']} /></ControlGroup><ControlGroup label="Camera Movement"><SelectControl value="Orbit" onChange={() => undefined} options={['Static', 'Pan', 'Tilt', 'Zoom', 'Orbit', 'Handheld']} /></ControlGroup><ControlGroup label="Speed"><SelectControl value="1x" onChange={() => undefined} options={['0.5x', '1x', '1.5x']} /></ControlGroup><ControlGroup label="Loop"><SelectControl value="Off" onChange={() => undefined} options={['Off', 'On']} /></ControlGroup></div><GenerateButton label="Generate Motion" onClick={() => startGeneration('Motion')} generating={generating} progress={progress} /></StudioWorkspace>
+}
+
+function EditView({ selectedTool, setSelectedTool, generated, setGenerated, notify }: any) {
+  const tools = ['Restyle', 'Remove Object', 'Change Background', 'Relight', 'Extend', 'Upscale']
+  return <StudioWorkspace title="AI EDIT" subtitle="Change your visual with a simple instruction." preview={<PreviewArt gradient={studioPresets[2].gradient} generated={generated} />}><div className="edit-preview-label">EDITING / CONCEPT 01</div><textarea className="studio-prompt" defaultValue="Change the background to a soft sunset studio." aria-label="Edit prompt" /><div className="edit-tools">{tools.map((tool) => <button className={selectedTool === tool ? 'selected' : ''} key={tool} onClick={() => setSelectedTool(tool)}>{tool}</button>)}</div><button className="gradient-button studio-generate" onClick={() => { setGenerated(true); notify(`${selectedTool} applied to concept`) }}>Apply Edit <WandSparkles size={15} /></button></StudioWorkspace>
+}
+
+function PresetsView({ usePreset }: { usePreset: (preset: typeof studioPresets[number]) => void }) {
+  return <section className="studio-subsection"><div className="studio-subsection-head"><div><span className="section-kicker">CREATIVE PRESETS</span><h2>Start with a visual direction.</h2></div><span>08 directions</span></div><div className="studio-presets">{studioPresets.slice(0, 4).map((preset) => <article className="studio-preset glass-card" key={preset.title}><div style={{ background: preset.gradient }} /><strong>{preset.title}</strong><p>{preset.description}</p><button onClick={() => usePreset(preset)}>Use preset <ArrowUpRight size={13} /></button></article>)}</div></section>
+}
+
+function WorkflowView({ selected, setSelected }: { selected: string; setSelected: (node: string) => void }) {
+  return <section className="studio-subsection workflow-section"><div className="studio-subsection-head"><div><span className="section-kicker">CREATIVE WORKFLOW</span><h2>Build your creative flow.</h2></div><span>Prompt → Image → Motion → Edit → Final</span></div><div className="workflow-canvas">{workflowNodes.map((node, index) => <button key={node} className={selected === node ? 'selected' : ''} onClick={() => setSelected(node)}><span>{index + 1}</span>{node}{index < workflowNodes.length - 1 && <i />}</button>)}</div><div className="workflow-settings"><strong>{selected}</strong><span>{selected === 'Prompt' ? 'Define the creative intent and visual direction.' : `Tune the ${selected.toLowerCase()} stage before moving forward.`}</span></div></section>
+}
+
+function HistoryView({ history, setHistory, notify }: any) {
+  return <section className="studio-list-view"><div className="studio-subsection-head"><div><span className="section-kicker">GENERATION HISTORY</span><h2>Everything you’ve made, in one place.</h2></div><button className="outline-button" onClick={() => notify('History synced with Atlas')}><Clock3 size={15} /> Cloud history</button></div><div className="studio-history-list">{history.map((item: any) => <article className="studio-history-row glass-card" key={item.id}><div className="studio-history-art" style={{ background: item.gradient }}>{item.resultUrl ? <img src={item.resultUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} /> : <Play size={16} />}</div><div><strong>{item.title}</strong><span>{item.type} · {item.model}</span><p>{item.prompt}</p></div><time>{item.date}<br /><b><Check size={11} /> {item.status}</b></time><div className="studio-row-actions">{item.resultUrl && <a href={item.resultUrl} target="_blank" rel="noopener noreferrer" download aria-label="Download media"><Download size={15} /></a>}<button aria-label="Open history item" onClick={() => notify(`Opened ${item.title}`)}><ArrowUpRight size={15} /></button><button aria-label="Reuse history item" onClick={() => notify('Prompt reused in Create')}><RotateCcw size={15} /></button><button aria-label="Delete history item" onClick={() => setHistory((items: any[]) => items.filter((entry: any) => entry.id !== item.id))}><X size={15} /></button></div></article>)}</div></section>
+}
+
+function ProjectsView({ navigate, notify }: StudioProps) {
+  return <section className="studio-list-view"><div className="studio-subsection-head"><div><span className="section-kicker">MY STUDIO PROJECTS</span><h2>Keep the concept moving.</h2></div><button className="gradient-button" onClick={() => notify('New Studio project started')}><Plus size={15} /> New project</button></div><div className="studio-projects-grid">{studioProjects.map((project) => <article className="studio-project-card glass-card" key={project.id}><div className="studio-project-art" style={{ background: project.gradient }}><span>{project.type}</span><Play size={16} /></div><div><span className="section-kicker">{project.status}</span><h3>{project.title}</h3><p>{project.creator} · Last edited {project.lastEdited}</p><div><button onClick={() => notify(`Opened ${project.title}`)}>Open</button><button onClick={() => notify(`Continuing ${project.title}`)}>Continue</button><button onClick={() => navigate('/briefs/new')}>Create Brief</button></div></div></article>)}</div></section>
+}
+
+function PreviewActions({ generated, resultUrl, notify, navigate }: { generated: boolean; resultUrl?: string; notify: (message: string) => void; navigate: (path: string) => void }) {
+  return generated ? (
+    <div className="studio-preview-actions">
+      {resultUrl && (
+        <a
+          href={resultUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          download="genra-concept"
+          className="outline-button"
+          style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+        >
+          <Download size={14} /> Download
+        </a>
+      )}
+      <button onClick={() => { notify('Media concept shared in chat'); navigate('/projects') }}>
+        <Send size={14} /> Send in chat
+      </button>
+      <button onClick={() => notify('Concept saved to project')}>
+        <Copy size={14} /> Save to Project
+      </button>
+      <button onClick={() => navigate('/creators')}>
+        <ArrowUpRight size={14} /> Find a Creator
+      </button>
+      <button onClick={() => navigate('/briefs/new')}>
+        <Layers3 size={14} /> Create Brief
+      </button>
+    </div>
+  ) : (
+    <div className="studio-preview-empty">
+      <ImageIcon size={20} />
+      <span>Your canvas is ready.</span>
+      <small>Generate a concept to unlock the marketplace handoff.</small>
+    </div>
+  )
+}

@@ -213,6 +213,28 @@ export const api = {
   },
 
   aiStudio: {
+    generateImage: (payload: { prompt: string; aspectRatio?: string; style?: string }) =>
+      request<{ id: string; jobId: string; status: string; type: string; prompt: string; createdAt: string }>(
+        '/ai-studio/generate-image',
+        {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        }
+      ),
+
+    generateVideo: (payload: { prompt: string; aspectRatio?: string; duration?: number; imageUrl?: string }) =>
+      request<{ id: string; jobId: string; status: string; type: string; prompt: string; createdAt: string }>(
+        '/ai-studio/generate-video',
+        {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        }
+      ),
+
+    getJobs: () => request<any[]>('/ai-studio/jobs'),
+
+    getJobById: (id: string) => request<any>(`/ai-studio/jobs/${id}`),
+
     generate: (payload: { prompt: string; model?: string; ratio?: string; style?: string; kind?: string }) =>
       request<any>('/ai-studio/generate', {
         method: 'POST',

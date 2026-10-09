@@ -21,7 +21,6 @@ export async function listCreators(req, res, next) {
 
     // 2. Specialization filter
     if (specialization) {
-      filter.$or = filter.$or || []
       const specList = Array.isArray(specialization) ? specialization : specialization.split(',').filter(Boolean)
       if (specList.length > 0) {
         filter.specialization = { $in: specList.map((s) => new RegExp(`^${s.trim()}$`, 'i')) }

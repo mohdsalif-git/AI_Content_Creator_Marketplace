@@ -8,6 +8,9 @@ import { Brief } from './models/Brief.js'
 import { Submission } from './models/Submission.js'
 import { PasswordReset } from './models/PasswordReset.js'
 import { RefreshToken } from './models/RefreshToken.js'
+import { GenerationJob } from './models/GenerationJob.js'
+import { Conversation } from './models/Conversation.js'
+import { Message } from './models/Message.js'
 import { hashPassword } from './utils/argon2.js'
 import { WORKFLOW_STEPS } from './constants/index.js'
 
@@ -25,34 +28,55 @@ export async function seedDatabase() {
     Brief.deleteMany({}),
     Submission.deleteMany({}),
     PasswordReset.deleteMany({}),
-    RefreshToken.deleteMany({})
+    RefreshToken.deleteMany({}),
+    GenerationJob.deleteMany({}),
+    Conversation.deleteMany({}),
+    Message.deleteMany({})
   ])
-  console.log('[Seed] Cleared existing data.')
+  console.log('[Seed] Cleared existing data across all collections.')
 
-  // 2. Hash standard demo password
-  const defaultPasswordHash = await hashPassword('Genra123')
+  // 2. Hash standard demo passwords
+  const defaultPasswordHash = await hashPassword('Demo@12345')
+  const genraPasswordHash = await hashPassword('Genra123')
 
-  // 3. Create demo brand / client user
-  const demoBrandUser = await User.create({
-    name: 'Aster & Co. Brand Studio',
-    email: 'demo@genra.ai',
-    passwordHash: defaultPasswordHash,
-    role: 'both'
-  })
+  // 3. Create 5 Brand Users
+  const brandUsersData = [
+    { email: 'brand1@genra.demo', name: 'Apex Brands Studio', role: 'brand' },
+    { email: 'brand2@genra.demo', name: 'Lumina Labs', role: 'brand' },
+    { email: 'brand3@genra.demo', name: 'Nova Apparel', role: 'brand' },
+    { email: 'brand4@genra.demo', name: 'Vanta Creative Records', role: 'brand' },
+    { email: 'brand5@genra.demo', name: 'Solstice Media', role: 'brand' }
+  ]
 
-  const clientUser2 = await User.create({
-    name: 'Vanta Records',
-    email: 'creative@vanta.example',
-    passwordHash: defaultPasswordHash,
-    role: 'brand'
-  })
+  const brandUsers = await User.create(
+    brandUsersData.map((b) => ({
+      ...b,
+      passwordHash: defaultPasswordHash
+    }))
+  )
+  console.log(`[Seed] Created ${brandUsers.length} brand users.`)
 
-  // 4. Create 6+ creator users & profiles covering all 5 specializations:
-  // AI Video Ads, AI Product Images, AI UGC, AI Animation, AI Branding
+  // Also create legacy test users for seamless test compatibility
+  const legacyUsers = await User.create([
+    {
+      name: 'Aster & Co. Demo Brand',
+      email: 'demo@genra.ai',
+      passwordHash: genraPasswordHash,
+      role: 'both'
+    },
+    {
+      name: 'Test User',
+      email: 'testuser@genra.ai',
+      passwordHash: genraPasswordHash,
+      role: 'both'
+    }
+  ])
+
+  // 4. Create 5 Creator Users & Profiles
   const creatorSeeds = [
     {
+      email: 'creator1@genra.demo',
       name: 'Mara Lennox',
-      email: 'mara@genra.ai',
       handle: '@maralennox',
       mark: 'ML',
       headline: 'Cinematic product worlds for brands with a point of view.',
@@ -96,25 +120,14 @@ export async function seedDatabase() {
           aspectRatio: '9:16',
           year: '2025',
           gradient: 'linear-gradient(135deg, #2a1b4e 0%, #683bb5 100%)'
-        },
-        {
-          title: 'A quiet future',
-          contentType: 'AI Product Images',
-          imageUrl: '',
-          toolsUsed: ['Kling', 'Flux'],
-          rights: 'Commercial',
-          platform: 'Web',
-          aspectRatio: '1:1',
-          year: '2024',
-          gradient: 'linear-gradient(135deg, #09203f 0%, #537895 100%)'
         }
       ],
       stats: { projects: 46, repeat: 82, turnaround: '5–7 days' },
       formats: ['16:9', '9:16', '1:1']
     },
     {
+      email: 'creator2@genra.demo',
       name: 'Kenji Park',
-      email: 'kenji@genra.ai',
       handle: '@kenjipark',
       mark: 'KP',
       headline: 'Surreal motion systems for fashion, culture, and music.',
@@ -147,356 +160,285 @@ export async function seedDatabase() {
           aspectRatio: '16:9',
           year: '2025',
           gradient: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)'
-        },
-        {
-          title: 'Orbit / 02',
-          contentType: 'AI Animation',
-          imageUrl: '',
-          toolsUsed: ['Sora', 'Topaz'],
-          rights: 'Commercial',
-          platform: 'Reels / Shorts',
-          aspectRatio: '9:16',
-          year: '2024',
-          gradient: 'linear-gradient(135deg, #141e30 0%, #243b55 100%)'
         }
       ],
-      stats: { projects: 39, repeat: 76, turnaround: '4–6 days' },
-      formats: ['9:16', '16:9', '4:5']
+      stats: { projects: 38, repeat: 78, turnaround: '4–6 days' },
+      formats: ['16:9', '1:1']
     },
     {
-      name: 'Joa Velásquez',
-      email: 'joa@genra.ai',
-      handle: '@joavfx',
-      mark: 'JV',
-      headline: 'Playful character animation with an editorial edge.',
-      specialization: 'AI Animation',
-      bio: 'I make character-led stories for people who want their brands to feel alive. Expect warm worlds, bold poses, and a process you can actually follow.',
-      location: 'Mexico City · GMT-6',
-      rating: 4.9,
-      price: 1250,
-      availability: 'Open',
-      color: '#f2a65a',
-      isVerified: true,
-      verificationScore: 84,
-      tools: [
-        { name: 'Midjourney', verified: true },
-        { name: 'Runway', verified: true },
-        { name: 'ElevenLabs', verified: true },
-        { name: 'Flux', verified: false }
-      ],
-      skills: ['Character Animation', 'Prompt Engineering', 'Storytelling'],
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
-      workflow: WORKFLOW_STEPS,
-      portfolio: [
-        {
-          title: 'Small acts of magic',
-          contentType: 'AI Animation',
-          imageUrl: '',
-          toolsUsed: ['Midjourney', 'Runway'],
-          rights: 'Commercial · Social',
-          platform: 'Instagram',
-          aspectRatio: '9:16',
-          year: '2025',
-          gradient: 'linear-gradient(135deg, #3a1c71 0%, #d76d77 50%, #ffaf7b 100%)'
-        }
-      ],
-      stats: { projects: 28, repeat: 68, turnaround: '3–5 days' },
-      formats: ['9:16', '1:1', '4:5']
-    },
-    {
-      name: 'Rhea Okafor',
-      email: 'rhea@genra.ai',
-      handle: '@rheaokafor',
-      mark: 'RO',
-      headline: 'High-gloss visual worlds, built for the scroll.',
-      specialization: 'AI UGC',
-      bio: 'I help premium products earn attention in the first frame. My workflow is fast, precise, and designed around modular content systems for social ads.',
-      location: 'New York · EST',
-      rating: 4.87,
-      price: 980,
-      availability: 'Open',
-      color: '#ff8870',
-      isVerified: true,
-      verificationScore: 88,
-      tools: [
-        { name: 'Flux', verified: true },
-        { name: 'Veo', verified: true },
-        { name: 'Topaz', verified: true },
-        { name: 'ChatGPT', verified: true }
-      ],
-      skills: ['Image Generation', 'Prompt Engineering', 'Video Editing'],
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
-      workflow: WORKFLOW_STEPS,
-      portfolio: [
-        {
-          title: 'Still moving',
-          contentType: 'AI UGC',
-          imageUrl: '',
-          toolsUsed: ['Flux', 'Veo'],
-          rights: 'Paid Ads · 12 Months',
-          platform: 'TikTok / Reels',
-          aspectRatio: '9:16',
-          year: '2025',
-          gradient: 'linear-gradient(135deg, #1f1c2c 0%, #928dab 100%)'
-        }
-      ],
-      stats: { projects: 19, repeat: 61, turnaround: '2–4 days' },
-      formats: ['9:16', '1:1']
-    },
-    {
-      name: 'Adrien Sol',
-      email: 'adrien@genra.ai',
-      handle: '@adriensol',
-      mark: 'AS',
-      headline: 'Minimalist 3D, luminous materials, quiet confidence.',
+      email: 'creator3@genra.demo',
+      name: 'Elena Rostova',
+      handle: '@elenarostova',
+      mark: 'ER',
+      headline: 'Hyper-editorial brand imagery and tactile product stills.',
       specialization: 'AI Product Images',
-      bio: 'I create objects and spaces that hold attention without shouting. Best for product launches, identity systems, and artful explainers.',
-      location: 'Paris · CET',
-      rating: 4.99,
-      price: 3200,
-      availability: 'Booked',
-      color: '#87b4ff',
-      isVerified: true,
-      verificationScore: 99,
-      tools: [
-        { name: 'Blender', verified: true },
-        { name: 'ComfyUI', verified: true },
-        { name: 'After Effects', verified: true },
-        { name: 'Midjourney', verified: true }
-      ],
-      skills: ['Product Visualization', '3D Art Direction', 'Image Generation'],
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: true },
-      workflow: WORKFLOW_STEPS,
-      portfolio: [
-        {
-          title: 'Form / function',
-          contentType: 'AI Product Images',
-          imageUrl: '',
-          toolsUsed: ['Blender', 'ComfyUI'],
-          rights: 'Commercial · Exclusive',
-          platform: 'Web / Print / OOH',
-          aspectRatio: '16:9',
-          year: '2025',
-          gradient: 'linear-gradient(135deg, #1a2a6c 0%, #b21f1f 50%, #fdbb2d 100%)'
-        }
-      ],
-      stats: { projects: 52, repeat: 89, turnaround: '7–10 days' },
-      formats: ['16:9', '1:1', '21:9']
-    },
-    {
-      name: 'Nina Ibarra',
-      email: 'nina@genra.ai',
-      handle: '@ninaibarra',
-      mark: 'NI',
-      headline: 'Human-scale stories from machine-made ingredients.',
-      specialization: 'AI Branding',
-      bio: 'I blend documentary sensibility with generative texture for brands that want to feel close, not polished flat.',
-      location: 'Barcelona · CET',
-      rating: 4.92,
-      price: 1500,
-      availability: 'Limited',
-      color: '#ffd36a',
-      isVerified: true,
-      verificationScore: 88,
-      tools: [
-        { name: 'Runway', verified: true },
-        { name: 'Sora', verified: true },
-        { name: 'ElevenLabs', verified: true },
-        { name: 'ChatGPT', verified: true }
-      ],
-      skills: ['Storytelling', 'Prompt Engineering', 'Art Direction'],
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
-      workflow: WORKFLOW_STEPS,
-      portfolio: [
-        {
-          title: 'Everyday futures',
-          contentType: 'AI Branding',
-          imageUrl: '',
-          toolsUsed: ['Sora', 'Runway'],
-          rights: 'Commercial · Global',
-          platform: 'Brand Film / Web',
-          aspectRatio: '16:9',
-          year: '2025',
-          gradient: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)'
-        }
-      ],
-      stats: { projects: 32, repeat: 71, turnaround: '4–6 days' },
-      formats: ['16:9', '9:16', '4:5']
-    },
-    {
-      name: 'Maya Chen',
-      email: 'maya@genra.ai',
-      handle: '@mayachen',
-      mark: 'MC',
-      headline: 'Precision photoreal product visualization and e-commerce campaigns.',
-      specialization: 'AI Product Images',
-      bio: 'High-end cosmetics and consumer tech visualization using multi-model LoRA pipelines and exacting lighting passes.',
-      location: 'San Francisco · PST',
-      rating: 4.95,
+      bio: 'Focusing on photorealistic luxury stills, lighting fidelity, and prompt consistency across global campaigns.',
+      location: 'Berlin · CET',
+      rating: 4.96,
       price: 2100,
       availability: 'Open',
-      color: '#c084fc',
+      color: '#f43f5e',
       isVerified: true,
       verificationScore: 94,
       tools: [
         { name: 'Midjourney', verified: true },
         { name: 'Flux', verified: true },
-        { name: 'ComfyUI', verified: true },
-        { name: 'ChatGPT', verified: true }
+        { name: 'ComfyUI', verified: true }
       ],
-      skills: ['Product Visualization', 'Image Generation', 'Prompt Engineering'],
+      skills: ['Prompt Engineering', 'Product Visualization', 'Art Direction'],
       rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
       workflow: WORKFLOW_STEPS,
       portfolio: [
         {
-          title: 'Luminous skin series',
+          title: 'Vesper Chronometer',
           contentType: 'AI Product Images',
           imageUrl: '',
           toolsUsed: ['Flux', 'ComfyUI'],
-          rights: 'Commercial · Digital Ads',
-          platform: 'Web / Social',
+          rights: 'Commercial',
+          platform: 'Web & Print',
           aspectRatio: '1:1',
           year: '2025',
-          gradient: 'linear-gradient(135deg, #232526 0%, #414345 100%)'
+          gradient: 'linear-gradient(135deg, #434343 0%, #000000 100%)'
         }
       ],
-      stats: { projects: 34, repeat: 79, turnaround: '3–5 days' },
-      formats: ['1:1', '4:5', '16:9']
+      stats: { projects: 52, repeat: 89, turnaround: '2–4 days' },
+      formats: ['1:1', '16:9']
+    },
+    {
+      email: 'creator4@genra.demo',
+      name: 'Rhea Okafor',
+      handle: '@rheaokafor',
+      mark: 'RO',
+      headline: 'High-converting social UGC avatars and creator campaigns.',
+      specialization: 'AI UGC',
+      bio: 'Authentic creator personas and AI UGC formats that scale performance marketing across TikTok and Meta.',
+      location: 'Lagos · WAT',
+      rating: 4.91,
+      price: 1500,
+      availability: 'Open',
+      color: '#f59e0b',
+      isVerified: true,
+      verificationScore: 89,
+      tools: [
+        { name: 'Runway', verified: true },
+        { name: 'ElevenLabs', verified: true },
+        { name: 'ChatGPT', verified: true }
+      ],
+      skills: ['Prompt Engineering', 'Storytelling', 'Video Editing'],
+      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
+      workflow: WORKFLOW_STEPS,
+      portfolio: [
+        {
+          title: 'Glow Serum Organic Social',
+          contentType: 'AI UGC',
+          imageUrl: '',
+          toolsUsed: ['Runway', 'ElevenLabs'],
+          rights: 'Commercial · Paid Social',
+          platform: 'TikTok / Instagram Reels',
+          aspectRatio: '9:16',
+          year: '2025',
+          gradient: 'linear-gradient(135deg, #ff9966 0%, #ff5e62 100%)'
+        }
+      ],
+      stats: { projects: 64, repeat: 85, turnaround: '1–3 days' },
+      formats: ['9:16']
+    },
+    {
+      email: 'creator5@genra.demo',
+      name: 'Adrien Sol',
+      handle: '@adriensol',
+      mark: 'AS',
+      headline: 'Generative brand identities, style guides, and design systems.',
+      specialization: 'AI Branding',
+      bio: 'Bridging high-end brand design with generative consistency matrices for future-facing tech and consumer brands.',
+      location: 'Paris · CET',
+      rating: 4.99,
+      price: 3200,
+      availability: 'Limited',
+      color: '#3b82f6',
+      isVerified: true,
+      verificationScore: 98,
+      tools: [
+        { name: 'Midjourney', verified: true },
+        { name: 'Flux', verified: true },
+        { name: 'Blender', verified: true }
+      ],
+      skills: ['Art Direction', 'Motion Systems', 'Prompt Engineering'],
+      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: true },
+      workflow: WORKFLOW_STEPS,
+      portfolio: [
+        {
+          title: 'Aura Protocol Identity',
+          contentType: 'AI Branding',
+          imageUrl: '',
+          toolsUsed: ['Flux', 'Blender'],
+          rights: 'Exclusive Commercial',
+          platform: 'Identity & Web',
+          aspectRatio: '16:9',
+          year: '2025',
+          gradient: 'linear-gradient(135deg, #2b5876 0%, #4e4376 100%)'
+        }
+      ],
+      stats: { projects: 31, repeat: 94, turnaround: '7–10 days' },
+      formats: ['16:9', '1:1']
     }
   ]
 
   const createdCreators = []
-  for (const seed of creatorSeeds) {
+  for (const s of creatorSeeds) {
     const user = await User.create({
-      name: seed.name,
-      email: seed.email,
+      name: s.name,
+      email: s.email,
       passwordHash: defaultPasswordHash,
       role: 'creator'
     })
 
     const profile = await CreatorProfile.create({
       userId: user._id,
-      displayName: seed.name,
-      handle: seed.handle,
-      mark: seed.mark,
-      headline: seed.headline,
-      specialization: seed.specialization,
-      bio: seed.bio,
-      location: seed.location,
-      rating: seed.rating,
-      price: seed.price,
-      availability: seed.availability,
-      color: seed.color,
-      isVerified: seed.isVerified,
-      verificationScore: seed.verificationScore,
-      tools: seed.tools,
-      skills: seed.skills,
-      rights: seed.rights,
-      workflow: seed.workflow,
-      portfolio: seed.portfolio,
-      formats: seed.formats,
-      stats: seed.stats
+      displayName: s.name,
+      handle: s.handle,
+      mark: s.mark,
+      headline: s.headline,
+      specialization: s.specialization,
+      bio: s.bio,
+      location: s.location,
+      rating: s.rating,
+      price: s.price,
+      availability: s.availability,
+      color: s.color,
+      isVerified: s.isVerified,
+      verificationScore: s.verificationScore,
+      tools: s.tools,
+      skills: s.skills,
+      rights: s.rights,
+      workflow: s.workflow,
+      portfolio: s.portfolio,
+      formats: s.formats,
+      stats: s.stats
     })
+
     createdCreators.push({ user, profile })
   }
-  console.log(`[Seed] Created ${createdCreators.length} creators across 5 specializations.`)
+  console.log(`[Seed] Created ${createdCreators.length} creator users and profiles.`)
 
-  // 5. Create Public Projects (for GET /projects and GET /projects/:id)
+  // 5. Create Projects (Public & Associated)
   const projectsData = [
     {
-      title: 'A New Kind of Morning',
-      description: 'A 45-second launch film for a ritual-forward coffee system. Tactile, warm, and otherworldly.',
-      budget: '$8,000 – $12,000',
-      deadline: 'Nov 18, 2026',
-      status: 'open',
-      brandId: demoBrandUser._id,
-      brandName: 'Aster & Co.',
-      tags: ['AI Video Ads', 'Runway', '16:9']
-    },
-    {
-      title: 'Motion with a Pulse',
-      description: 'A modular world for an electronic record: reactive forms, black chrome, and high-energy motion design.',
-      budget: '$5,000 – $8,000',
-      deadline: 'Dec 03, 2026',
-      status: 'in_progress',
-      brandId: clientUser2._id,
-      brandName: 'Vanta Records',
-      tags: ['AI Animation', 'Kling', 'Suno']
-    },
-    {
-      title: 'Objects of Attention',
-      description: 'A set of three short product films that give ordinary desk objects an elevated, collectible presence.',
-      budget: '$3,000 – $5,000',
-      deadline: 'Oct 29, 2026',
+      title: 'Solstice Autonomous Vehicle Teaser',
+      brand: 'Solstice Mobility',
+      category: 'AI Video Ads',
+      tag: 'Autonomous',
+      year: '2025',
+      duration: '0:45',
+      aspectRatio: '16:9',
+      tools: ['Runway', 'Veo', 'ComfyUI'],
+      rights: 'Commercial · Global broadcast & paid media',
+      description: 'Speculative reveal film for next-gen electric vehicle.',
+      gradient: 'linear-gradient(135deg, #181926 0%, #2f334d 100%)',
+      featured: true,
       status: 'completed',
-      brandId: demoBrandUser._id,
-      brandName: 'Northline Studio',
-      tags: ['AI Product Images', 'Blender', '1:1']
+      creatorId: createdCreators[0].profile._id
     },
     {
-      title: 'Future Skin Modular Campaign',
-      description: 'Series of 9:16 social UGC clips showcasing next-gen biotech skincare with verified creators.',
-      budget: '$4,000 – $7,000',
-      deadline: 'Jan 15, 2027',
+      title: 'Vesper High-Jewelry Campaign',
+      brand: 'Maison Vesper',
+      category: 'AI Product Images',
+      tag: 'Luxury',
+      year: '2025',
+      duration: 'Stills',
+      aspectRatio: '1:1',
+      tools: ['Midjourney', 'Flux', 'ComfyUI'],
+      rights: 'Commercial · Print, OOH, Digital',
+      description: 'Diamond caustics and macroscopic jewelry imagery.',
+      gradient: 'linear-gradient(135deg, #09203f 0%, #537895 100%)',
+      featured: true,
+      status: 'completed',
+      creatorId: createdCreators[2].profile._id
+    },
+    {
+      title: 'Kinetica Sound Architecture',
+      brand: 'Kinetica Audio',
+      category: 'AI Animation',
+      tag: 'Audio',
+      year: '2025',
+      duration: '1:12',
+      aspectRatio: '16:9',
+      tools: ['Kling', 'Sora', 'Topaz'],
+      rights: 'Commercial · Live performance & online',
+      description: 'Generative frequency visualizer for flagship spatial headphones.',
+      gradient: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
+      featured: true,
       status: 'open',
-      brandId: demoBrandUser._id,
-      brandName: 'Aura Labs',
-      tags: ['AI UGC', 'Flux', '9:16']
+      creatorId: createdCreators[1].profile._id
+    },
+    {
+      title: 'Terra Hydro Performance UGC Series',
+      brand: 'Terra Health',
+      category: 'AI UGC',
+      tag: 'UGC',
+      year: '2025',
+      duration: '0:30',
+      aspectRatio: '9:16',
+      tools: ['Runway', 'ElevenLabs', 'ChatGPT'],
+      rights: 'Commercial · Paid Meta & TikTok',
+      description: '6 viral hook variants for electrolyte drink launch.',
+      gradient: 'linear-gradient(135deg, #ff9966 0%, #ff5e62 100%)',
+      featured: false,
+      status: 'in_progress',
+      creatorId: createdCreators[3].profile._id
+    },
+    {
+      title: 'Synthetix Brand Architecture System',
+      brand: 'Synthetix Robotics',
+      category: 'AI Branding',
+      tag: 'System',
+      year: '2025',
+      duration: 'Guidebook',
+      aspectRatio: '16:9',
+      tools: ['Midjourney', 'Flux', 'Blender'],
+      rights: 'Exclusive Commercial',
+      description: 'Complete visual identity including typography and logo motion.',
+      gradient: 'linear-gradient(135deg, #2b5876 0%, #4e4376 100%)',
+      featured: false,
+      status: 'open',
+      creatorId: createdCreators[4].profile._id
     }
   ]
 
   const createdProjects = await Project.insertMany(projectsData)
-  console.log(`[Seed] Created ${createdProjects.length} public projects.`)
+  console.log(`[Seed] Created ${createdProjects.length} projects.`)
 
-  // 6. Create Seed Briefs
+  // 6. Create Briefs
   const briefsData = [
     {
-      brandId: demoBrandUser._id,
-      title: 'A new kind of morning',
-      brandName: 'Aster & Co.',
+      title: 'Kinetic Footwear Launch · 3D AI Motion Teaser',
+      brandName: 'Aethel Footwear',
+      brandId: brandUsers[0]._id,
       contentType: 'AI Video Ads',
-      style: ['Cinematic', 'Minimal', 'Photoreal'],
-      aspectRatio: ['16:9', '9:16'],
-      platform: 'YouTube & Paid Social',
-      usage: 'Commercial · Global',
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
-      requiredTools: ['Runway', 'Veo', 'ComfyUI'],
       assetCount: 4,
-      budget: '$8k – $12k',
-      budgetNum: 10000,
-      deadline: 'Nov 18, 2026',
-      description: 'A 45-second launch film for a ritual-forward coffee system. Tactile, warm, and otherworldly.',
+      budget: '$4k – $6k',
+      budgetNum: 5000,
+      deadline: 'Nov 12, 2026',
+      description: 'Looking for a creator to deliver four high-velocity motion vignettes highlighting our lightweight cushioning system.',
       status: 'Published'
     },
     {
-      brandId: clientUser2._id,
-      title: 'Motion with a pulse',
-      brandName: 'Vanta Records',
-      contentType: 'AI Animation',
-      style: ['Surreal', '3D glossy'],
-      aspectRatio: ['16:9', '1:1', '9:16'],
-      platform: 'Cross-platform',
-      usage: 'Commercial · Global',
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: true },
-      requiredTools: ['Kling', 'Sora', 'Suno'],
+      title: 'Botanical Fragrance World · Surreal Macro Stills',
+      brandName: 'Oceane Parfums',
+      brandId: brandUsers[1]._id,
+      contentType: 'AI Product Images',
       assetCount: 8,
-      budget: '$5k – $8k',
-      budgetNum: 6500,
-      deadline: 'Dec 03, 2026',
-      description: 'A modular world for an electronic record: reactive forms, black chrome, and stage-ready systems.',
+      budget: '$2.5k – $4k',
+      budgetNum: 3200,
+      deadline: 'Nov 20, 2026',
+      description: 'High-res hyper-tactile imagery capturing dew, raw glass, and floral blooms in extreme macro detail.',
       status: 'In review'
     },
     {
-      brandId: demoBrandUser._id,
-      title: 'Objects of attention',
-      brandName: 'Northline Studio',
-      contentType: 'AI Product Images',
-      style: ['Editorial', '3D glossy'],
-      aspectRatio: ['1:1', '4:5'],
-      platform: 'Web & Social',
-      usage: 'Commercial · Digital',
-      rights: { commercialUsage: true, paidAds: true, license12Months: true, exclusive: false },
-      requiredTools: ['Blender', 'Flux'],
+      title: 'Desk Objects of the Near Future · Video Ad Series',
+      brandName: 'Monolith Hardware',
+      brandId: brandUsers[2]._id,
+      contentType: 'AI Video Ads',
       assetCount: 6,
       budget: '$3k – $5k',
       budgetNum: 4000,
@@ -509,48 +451,144 @@ export async function seedDatabase() {
   const createdBriefs = await Brief.insertMany(briefsData)
   console.log(`[Seed] Created ${createdBriefs.length} briefs.`)
 
-  // 7. Create Submissions for the 4 dashboard categories
-  // (Active Briefs, Applications, In Progress, Completed)
+  // 7. Create Submissions
   await Submission.create([
     {
       briefId: createdBriefs[0]._id,
-      creatorId: createdCreators[0].profile._id, // Mara Lennox
-      brandId: demoBrandUser._id,
+      creatorId: createdCreators[0].profile._id,
+      brandId: brandUsers[0]._id,
       status: 'sent',
       progress: 25,
       notes: 'Initial invitation sent'
     },
     {
       briefId: createdBriefs[1]._id,
-      creatorId: createdCreators[1].profile._id, // Kenji Park
-      brandId: clientUser2._id,
+      creatorId: createdCreators[1].profile._id,
+      brandId: brandUsers[1]._id,
       status: 'applied',
       progress: 40,
       notes: 'Creator submitted application with treatment board'
     },
     {
       briefId: createdBriefs[0]._id,
-      creatorId: createdCreators[3].profile._id, // Rhea Okafor
-      brandId: demoBrandUser._id,
+      creatorId: createdCreators[3].profile._id,
+      brandId: brandUsers[0]._id,
       status: 'in_progress',
       progress: 70,
       notes: 'Generation pass underway'
     },
     {
       briefId: createdBriefs[2]._id,
-      creatorId: createdCreators[4].profile._id, // Adrien Sol
-      brandId: demoBrandUser._id,
+      creatorId: createdCreators[4].profile._id,
+      brandId: brandUsers[2]._id,
       status: 'completed',
       progress: 100,
       notes: 'All 6 deliverables packaged with commercial rights'
     }
   ])
-  console.log('[Seed] Created initial submissions for Dashboard.')
+  console.log('[Seed] Created dashboard submissions.')
 
-  console.log('[Seed] Database seeding completed successfully!')
+  // 8. Create Conversations & Messages
+  const conversation1 = await Conversation.create({
+    participants: [brandUsers[0]._id, createdCreators[0].user._id],
+    lastMessage: 'The first motion cut looks breathtaking! Can we try 9:16 for Reels?',
+    lastMessageAt: new Date()
+  })
+
+  await Message.create([
+    {
+      conversationId: conversation1._id,
+      senderId: brandUsers[0]._id,
+      content: 'Hi Mara, excited to work with you on the footwear launch.'
+    },
+    {
+      conversationId: conversation1._id,
+      senderId: createdCreators[0].user._id,
+      content: 'Thanks! I have uploaded the first cinematic storyboard pass for your review.'
+    },
+    {
+      conversationId: conversation1._id,
+      senderId: brandUsers[0]._id,
+      content: 'The first motion cut looks breathtaking! Can we try 9:16 for Reels?'
+    }
+  ])
+
+  const conversation2 = await Conversation.create({
+    participants: [brandUsers[1]._id, createdCreators[2].user._id],
+    lastMessage: 'Macro lighting is locked. Rendering 4k plates now.',
+    lastMessageAt: new Date()
+  })
+
+  await Message.create([
+    {
+      conversationId: conversation2._id,
+      senderId: brandUsers[1]._id,
+      content: 'Hello Elena, let us confirm the fragrance bottle glass caustics.'
+    },
+    {
+      conversationId: conversation2._id,
+      senderId: createdCreators[2].user._id,
+      content: 'Macro lighting is locked. Rendering 4k plates now.'
+    }
+  ])
+  console.log('[Seed] Created conversations and messages.')
+
+  // 9. Create GenerationJobs
+  await GenerationJob.create([
+    {
+      userId: brandUsers[0]._id,
+      type: 'image',
+      prompt: 'Futuristic glass bottle with glowing amber liquid, studio cinematic lighting',
+      aspectRatio: '16:9',
+      style: 'Cinematic',
+      status: 'completed',
+      resultUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+      provider: 'seedream'
+    },
+    {
+      userId: brandUsers[0]._id,
+      type: 'video',
+      prompt: 'Liquid mercury droplet floating in zero gravity, morphing into metallic spheres',
+      aspectRatio: '16:9',
+      duration: 5,
+      status: 'completed',
+      resultUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      provider: 'seedance'
+    },
+    {
+      userId: brandUsers[1]._id,
+      type: 'image',
+      prompt: 'Minimalist brutalist architecture against sunset sky, ultra sharp, 8k',
+      aspectRatio: '1:1',
+      style: 'Photorealistic',
+      status: 'processing',
+      provider: 'seedream'
+    }
+  ])
+  console.log('[Seed] Created sample generation jobs.')
+
+  // 10. Query data back from Atlas/Mongo and print counts per collection
+  const counts = {
+    users: await User.countDocuments(),
+    creatorProfiles: await CreatorProfile.countDocuments(),
+    projects: await Project.countDocuments(),
+    briefs: await Brief.countDocuments(),
+    submissions: await Submission.countDocuments(),
+    conversations: await Conversation.countDocuments(),
+    messages: await Message.countDocuments(),
+    generationJobs: await GenerationJob.countDocuments()
+  }
+
+  console.log('\n======================================================')
+  console.log('       DATABASE VERIFICATION - COLLECTION COUNTS       ')
+  console.log('======================================================')
+  console.table(counts)
+  console.log('Seeding successfully completed and verified in database.\n')
+
+  return counts
 }
 
-// If run directly via node server/seed.js
+// If run directly via node
 if (process.argv[1]?.includes('seed')) {
   seedDatabase()
     .then(async () => {

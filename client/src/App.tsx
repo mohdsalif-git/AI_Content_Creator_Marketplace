@@ -59,8 +59,11 @@ type Creator = {
   availability: 'Open' | 'Limited' | 'Booked'
   color: string
   verified: boolean
-  portfolio: { title: string; type: string; gradient: string; tools: string[]; year: string }[]
+  portfolio: { title: string; type?: string; contentType?: string; gradient?: string; tools?: string[]; toolsUsed?: string[]; year?: string }[]
   stats: { projects: number; repeat: number; turnaround: string }
+  specialization?: string
+  workflow?: string[]
+  rights?: { commercialUsage?: boolean; paidAds?: boolean; license12Months?: boolean; exclusive?: boolean }
 }
 
 type Brief = {
